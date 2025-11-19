@@ -1,5 +1,5 @@
 {
-  "name": "veloqr",
+  "name": "@vkhangstack/veloqr",
   "version": "1.0.0",
   "type": "module",
   "description": "A high-performance React QR code scanner library using WebAssembly and Rust",
@@ -41,7 +41,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vkhangstack/VeloQR.git"
+    "url": "git+https://github.com/vkhangstack/VeloQR.git"
   },
   "homepage": "https://github.com/vkhangstack/VeloQR#readme",
   "bugs": {
