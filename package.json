@@ -1,6 +1,6 @@
 {
   "name": "@vkhangstack/veloqr",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "A high-performance React QR code scanner library using WebAssembly and Rust",
   "main": "dist/index.js",
