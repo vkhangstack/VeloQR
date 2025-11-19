@@ -26,7 +26,7 @@ Before building the library, ensure you have the following installed:
 ### For Users
 
 ```bash
-npm install veloqr
+npm i @vkhangstack/veloqr
 ```
 
 ### For Development

@@ -57,7 +57,7 @@ Or configure WASM URL in your code (see below).
 After building, you can use it in your React project:
 
 ```bash
-npm install veloqr
+npm i @vkhangstack/veloqr
 ```
 
 Or for local development:
