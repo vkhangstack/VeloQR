@@ -1,0 +1,70 @@
+{
+  "name": "veloqr",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A high-performance React QR code scanner library using WebAssembly and Rust",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "rust-qr/pkg"
+  ],
+  "scripts": {
+    "build:wasm": "cd rust-qr && wasm-pack build --target web --out-dir pkg",
+    "build:rollup": "rollup -c",
+    "build": "npm run build:wasm && npm run build:rollup",
+    "dev": "rollup -c -w",
+    "example": "cd example && npm run dev",
+    "prepublishOnly": "npm run build",
+    "version:patch": "npm version patch",
+    "version:minor": "npm version minor",
+    "version:major": "npm version major",
+    "publish:check": "bash scripts/pre-publish-check.sh",
+    "publish:dry": "npm publish --dry-run",
+    "publish:npm": "npm publish",
+    "release:patch": "npm run version:patch && npm run publish:npm",
+    "release:minor": "npm run version:minor && npm run publish:npm",
+    "release:major": "npm run version:major && npm run publish:npm"
+  },
+  "keywords": [
+    "react",
+    "qr-code",
+    "qr-scanner",
+    "webassembly",
+    "wasm",
+    "rust",
+    "camera",
+    "barcode"
+  ],
+  "author": "vkhangstack",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vkhangstack/VeloQR.git"
+  },
+  "homepage": "https://github.com/vkhangstack/VeloQR#readme",
+  "bugs": {
+    "url": "https://github.com/vkhangstack/VeloQR/issues"
+  },
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-typescript": "^11.1.6",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "rollup": "^4.9.6",
+    "rollup-plugin-dts": "^6.1.0",
+    "rollup-plugin-peer-deps-external": "^2.2.4",
+    "rollup-plugin-postcss": "^4.0.2",
+    "tslib": "^2.6.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {}
+}

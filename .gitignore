@@ -1,0 +1,8 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+rust-qr/target/
+rust-qr/pkg/
+rust-qr/Cargo.lock
+.env

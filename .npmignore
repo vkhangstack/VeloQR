@@ -1,0 +1,32 @@
+# Source files
+src/
+rust-qr/src/
+rust-qr/target/
+rust-qr/Cargo.toml
+rust-qr/Cargo.lock
+
+# Example
+example/
+
+# Config files
+tsconfig.json
+rollup.config.js
+.gitignore
+
+# Development
+node_modules/
+*.log
+.DS_Store
+
+# Documentation
+QUICKSTART.md
+
+#Scripts
+scripts/
+
+#Include these (whitelist)
+!dist/
+!rust-qr/pkg/
+!README.md
+!LICENSE
+
