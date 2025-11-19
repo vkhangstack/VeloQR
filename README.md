@@ -246,6 +246,138 @@ function CustomScanner() {
 
 export default CustomScanner;
 ```
+### Camera Switching
+
+```tsx
+import { QRScanner } from 'veloqr';
+import { useState } from 'react';
+
+function App() {
+  const [cameraFacing, setCameraFacing] = useState<'front' | 'back'>('back');
+
+  return (
+    <div>
+      <QRScanner
+        prefer redCamera={cameraFacing}
+        showCameraSwitch={true} // Shows built-in switch button
+      />
+      <button onClick={() => setCameraFacing(prev => prev === 'front' ? 'back' : 'front')}>
+        Switch Camera
+      </button>
+    </div>
+  );
+}
+```
+
+### Advanced: Using the Hook with Camera Management
+
+```tsx
+import { useQRScanner, getCameraDevices } from 'veloqr';
+import { useEffect, useState } from 'react';
+
+function CustomScanner() {
+  const [cameras, setCameras] = useState([]);
+
+  const {
+    videoRef,
+    canvasRef,
+    isScanning,
+    startScanning,
+    switchCamera,
+    availableCameras,
+    currentCamera,
+  } = useQRScanner({
+    enableFrameMerging: true,
+    optimizeForSafari: true, // Auto-detected
+    onScan: (results) => console.log(results),
+  });
+
+  useEffect(() => {
+    startScanning();
+  }, []);
+
+  return (
+    <div>
+      <video ref={videoRef} />
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+
+      <select onChange={(e) => switchCamera(e.target.value as any)}>
+        {availableCameras.map(cam => (
+          <option key={cam.deviceId} value={cam.deviceId}>
+            {cam.label}
+          </option>
+        ))}
+      </select>
+
+      <p>Current: {currentCamera?.label}</p>
+    </div>
+  );
+}
+```
+
+### Frame Merging for Better Accuracy
+
+```tsx
+import { QRScanner } from 'veloqr';
+
+function App() {
+  return (
+    <QRScanner
+      enableFrameMerging={true} // Enable temporal averaging
+      frameMergeCount={5} // Average last 5 frames (default: 3)
+      onScan={(results) => console.log(results)}
+    />
+  );
+}
+```
+
+### Use Back Camera (Default)
+
+```tsx
+import { QRScanner } from 'veloqr';
+
+function App() {
+  return (
+    <QRScanner
+      preferredCamera="back"  // or "environment"
+      onScan={(results) => console.log(results)}
+    />
+  );
+}
+```
+
+### Use Front Camera
+
+```tsx
+import { QRScanner } from 'veloqr';
+
+function App() {
+  return (
+    <QRScanner
+      preferredCamera="front"  // or "user"
+      onScan={(results) => console.log(results)}
+    />
+  );
+}
+```
+
+### Enable Camera Switching
+
+Add a built-in camera switch button:
+
+```tsx
+import { QRScanner } from 'veloqr';
+
+function App() {
+  return (
+    <QRScanner
+      preferredCamera="back"
+      showCameraSwitch={true}  // Shows 🔄 button
+      onScan={(results) => console.log(results)}
+    />
+  );
+}
+```
 
 ## Advanced Configuration
 

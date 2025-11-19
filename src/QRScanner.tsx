@@ -4,6 +4,7 @@ import { useQRScanner } from './hooks/useQRScanner';
 import { drawQROverlay } from './utils/qr-processor';
 import { ScanningAnimation } from './components/ScanningAnimation';
 import { DEFAULT_TEXTS } from './constants/defaultTexts';
+import { CameraSwitchIcon } from './components/CameraSwitchIcon';
 
 export const QRScanner: React.FC<QRScannerProps> = ({
   onScan,
@@ -19,8 +20,16 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   highlightBorderWidth = 3,
   animationText = {},
   animationConfig = {},
+  enableFrameMerging = false,
+  optimizeForSafari,
+  showCameraSwitch = false,
+  preferredCamera = 'environment',
 }) => {
   const [showDetection, setShowDetection] = useState(false);
+  const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(
+    preferredCamera === 'user' || preferredCamera === 'front' ? 'front' : 'back'
+  );
+  const [isRotating, setIsRotating] = useState(false);
 
   // Merge default texts with custom texts
   const texts = {
@@ -52,13 +61,34 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     isScanning,
     startScanning,
     stopScanning,
+    switchCamera,
+    availableCameras,
+    currentCamera,
     lastResults,
     error,
   } = useQRScanner({
     scanDelay,
     onScan,
     onError,
+    videoConstraints,
+    enableFrameMerging,
+    optimizeForSafari,
+    preferredCamera,
   });
+
+  const handleCameraSwitch = async () => {
+    if (isRotating) return; // Prevent multiple clicks during animation
+
+    setIsRotating(true);
+    const newFacing = currentFacing === 'front' ? 'back' : 'front';
+    setCurrentFacing(newFacing);
+    await switchCamera(newFacing);
+
+    // Reset animation state after animation completes
+    setTimeout(() => {
+      setIsRotating(false);
+    }, 600); // Match the CSS animation duration
+  };
 
   useEffect(() => {
     startScanning();
@@ -186,6 +216,46 @@ export const QRScanner: React.FC<QRScannerProps> = ({
         >
           {formatDetectedCount(lastResults.length)}
         </div>
+      )}
+
+      {/* Camera Switch Button */}
+      {showCameraSwitch && availableCameras.length > 1 && (
+        <button
+          onClick={handleCameraSwitch}
+          disabled={isRotating}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            backgroundColor: 'rgba(0, 0, 0, 0.6)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '50%',
+            width: '48px',
+            height: '48px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: isRotating ? 'not-allowed' : 'pointer',
+            fontSize: '24px',
+            zIndex: 10,
+            transition: 'all 0.3s ease',
+            opacity: isRotating ? 0.7 : 1,
+          }}
+          title={`Switch to ${currentFacing === 'front' ? 'back' : 'front'} camera`}
+        >
+          <div
+            style={{
+              transform: isRotating ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.6s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <CameraSwitchIcon size={28} color="white" />
+          </div>
+        </button>
       )}
     </div>
   );

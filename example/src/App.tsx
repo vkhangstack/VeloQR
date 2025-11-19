@@ -53,6 +53,8 @@ function App() {
             animationConfig={{
               showStatusText: false
             }}
+            showCameraSwitch={true}
+            enableFrameMerging={true}
           />
         ) : (
           <QRImageScanner

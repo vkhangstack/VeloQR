@@ -40,6 +40,10 @@ export interface QRScannerProps {
   highlightBorderWidth?: number;
   animationText?: AnimationText;
   animationConfig?: AnimationConfig;
+  enableFrameMerging?: boolean; // Enable temporal frame averaging
+  optimizeForSafari?: boolean; // Apply Safari-specific optimizations
+  showCameraSwitch?: boolean; // Show camera switch button
+  preferredCamera?: 'front' | 'back' | 'environment' | 'user';
 }
 
 export interface QRImageScannerProps {
@@ -57,6 +61,11 @@ export interface UseQRScannerOptions {
   scanDelay?: number;
   onScan?: (results: QRCodeResult[]) => void;
   onError?: (error: Error) => void;
+  videoConstraints?: MediaTrackConstraints;
+  enableFrameMerging?: boolean; // Enable temporal frame averaging for better accuracy
+  frameMergeCount?: number; // Number of frames to merge (default: 3)
+  optimizeForSafari?: boolean; // Apply Safari-specific optimizations (default: auto-detect)
+  preferredCamera?: 'front' | 'back' | 'environment' | 'user'; // Preferred camera
 }
 
 export interface UseQRScannerReturn {
@@ -65,6 +74,16 @@ export interface UseQRScannerReturn {
   isScanning: boolean;
   startScanning: () => Promise<void>;
   stopScanning: () => void;
+  switchCamera: (facingMode?: 'front' | 'back' | 'environment' | 'user') => Promise<void>;
+  availableCameras: CameraDevice[];
+  currentCamera: CameraDevice | null;
   lastResults: QRCodeResult[];
   error: Error | null;
+}
+
+export interface CameraDevice {
+  deviceId: string;
+  label: string;
+  kind: 'videoinput';
+  groupId?: string;
 }

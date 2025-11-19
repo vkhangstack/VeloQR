@@ -1,6 +1,12 @@
 export { QRScanner } from './QRScanner';
 export { QRImageScanner } from './QRImageScanner';
 export { useQRScanner } from './hooks/useQRScanner';
+export {
+  CameraSwitchIcon,
+  CameraSwitchIconSimple,
+  CameraSwitchIconFlip,
+  CameraSwitchIconMinimal,
+} from './components/CameraSwitchIcon';
 export { initWasm, decodeQRFromImageData, drawQROverlay } from './utils/qr-processor';
 export { configureWasm, resetWasm } from './utils/wasm-loader';
 export {
@@ -14,6 +20,27 @@ export {
   LANGUAGES,
   getTextsByLanguage,
 } from './constants/defaultTexts';
+export {
+  getCameraDevices,
+  getCameraCapabilities,
+  identifyCameras,
+  switchCamera,
+} from './utils/camera-manager';
+export {
+  isSafari,
+  isIOS,
+  isSafariOrIOS,
+  getSafariOptimizedConstraints,
+} from './utils/browser-detection';
+export {
+  FrameBuffer,
+  mergeTwoFrames,
+  enhanceFrame,
+  optimizeFrameForSafari,
+  getRecommendedScanDelay,
+  getRecommendedVideoConstraints,
+  isLowEndDevice,
+} from './utils/performanceOptimizer';
 export type {
   QRCodeResult,
   QRScannerProps,
@@ -23,5 +50,7 @@ export type {
   AnimationText,
   AnimationConfig,
   WasmConfig,
+  CameraDevice,
 } from './types';
 export type { SupportedLanguage } from './constants/defaultTexts';
+export type { CameraCapabilities } from './utils/camera-manager';

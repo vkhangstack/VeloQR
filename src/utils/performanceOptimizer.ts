@@ -188,3 +188,116 @@ export function getRecommendedVideoConstraints(): MediaTrackConstraints {
     frameRate: { ideal: 30, max: 30 },
   };
 }
+
+/**
+ * Frame buffer for temporal merging (averaging multiple frames)
+ */
+export class FrameBuffer {
+  private frames: ImageData[] = [];
+  private maxFrames: number;
+
+  constructor(maxFrames: number = 3) {
+    this.maxFrames = maxFrames;
+  }
+
+  /**
+   * Add a frame to the buffer
+   */
+  addFrame(frame: ImageData): void {
+    this.frames.push(frame);
+    if (this.frames.length > this.maxFrames) {
+      this.frames.shift();
+    }
+  }
+
+  /**
+   * Get merged frame by averaging all frames in buffer
+   */
+  getMergedFrame(): ImageData | null {
+    if (this.frames.length === 0) {
+      return null;
+    }
+
+    if (this.frames.length === 1) {
+      return this.frames[0];
+    }
+
+    const { width, height } = this.frames[0];
+    const merged = new ImageData(width, height);
+    const frameCount = this.frames.length;
+
+    // Average pixel values across all frames
+    for (let i = 0; i < merged.data.length; i++) {
+      let sum = 0;
+      for (let f = 0; f < frameCount; f++) {
+        sum += this.frames[f].data[i];
+      }
+      merged.data[i] = Math.round(sum / frameCount);
+    }
+
+    return merged;
+  }
+
+  /**
+   * Clear the buffer
+   */
+  clear(): void {
+    this.frames = [];
+  }
+
+  /**
+   * Check if buffer is full
+   */
+  isFull(): boolean {
+    return this.frames.length >= this.maxFrames;
+  }
+}
+
+/**
+ * Merge two frames from different cameras (simple average blend)
+ */
+export function mergeTwoFrames(frame1: ImageData, frame2: ImageData): ImageData {
+  if (frame1.width !== frame2.width || frame1.height !== frame2.height) {
+    throw new Error('Frames must have the same dimensions');
+  }
+
+  const merged = new ImageData(frame1.width, frame1.height);
+
+  for (let i = 0; i < merged.data.length; i++) {
+    merged.data[i] = Math.round((frame1.data[i] + frame2.data[i]) / 2);
+  }
+
+  return merged;
+}
+
+/**
+ * Enhance frame quality for better QR detection (contrast adjustment)
+ */
+export function enhanceFrame(imageData: ImageData): ImageData {
+  const enhanced = new ImageData(imageData.width, imageData.height);
+  const data = imageData.data;
+  const enhancedData = enhanced.data;
+
+  // Simple contrast enhancement
+  const contrastFactor = 1.5;
+  const intercept = 128 * (1 - contrastFactor);
+
+  for (let i = 0; i < data.length; i += 4) {
+    // Apply contrast to RGB channels
+    enhancedData[i] = Math.max(0, Math.min(255, data[i] * contrastFactor + intercept));
+    enhancedData[i + 1] = Math.max(0, Math.min(255, data[i + 1] * contrastFactor + intercept));
+    enhancedData[i + 2] = Math.max(0, Math.min(255, data[i + 2] * contrastFactor + intercept));
+    enhancedData[i + 3] = data[i + 3]; // Alpha channel
+  }
+
+  return enhanced;
+}
+
+/**
+ * Safari-specific frame optimization
+ */
+export function optimizeFrameForSafari(imageData: ImageData): ImageData {
+  // Safari benefits from lower resolution and enhanced contrast
+  const downscaled = downscaleImageData(imageData, 0.75);
+  return enhanceFrame(downscaled);
+}
