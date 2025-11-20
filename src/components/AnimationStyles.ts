@@ -124,8 +124,8 @@ export const getAnimationStyles = (color: string = '#00ff00') => `
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: min(280px, 70%);
-    height: min(280px, 70%);
+    width: min(280px, 60vmin);
+    height: min(280px, 60vmin);
     pointer-events: none;
     z-index: 10;
     overflow: hidden;
