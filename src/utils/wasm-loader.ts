@@ -1,31 +1,84 @@
 import type { WasmConfig } from '../types';
+import packageJson from '../../package.json';
 
 // WASM loading utility with multiple strategies
 let wasmInstance: any = null;
 let wasmInitialized = false;
 let wasmConfig: WasmConfig = {};
 
+// Default CDN configuration
+const PACKAGE_NAME = packageJson.name;
+const PACKAGE_VERSION = packageJson.version;
+
+
 /**
- * Configure WASM loading with custom URLs
+ * Configure WASM to load from jsDelivr CDN
  *
- * @param config - Configuration object
- * @param config.wasmUrl - Full URL to the .wasm file (e.g., 'https://cdn.example.com/veloqr_bg.wasm' or '/static/wasm/veloqr_bg.wasm')
- * @param config.wasmJsUrl - Full URL to the .js wrapper file (optional, defaults to same directory as wasmUrl)
+ * @param version - Package version to load (e.g., '1.0.1', 'latest'). Defaults to current package version.
  *
  * @example
- * // Load from CDN
+ * // Load from CDN with specific version
+ * configureWasmFromCDN('1.0.1');
+ *
+ * @example
+ * // Load from CDN with latest version
+ * configureWasmFromCDN('latest');
+ *
+ * @example
+ * // Load from CDN with current package version (default)
+ * configureWasmFromCDN();
+ */
+export function configureWasmFromCDN(version?: string): void {
+  const targetVersion = version || PACKAGE_VERSION;
+  const baseUrl = `https://cdn.jsdelivr.net/npm/${PACKAGE_NAME}@${targetVersion}/bundle/bin/complete`;
+  configureWasm({
+    wasmUrl: `${baseUrl}/veloqr_bg.wasm`,
+    wasmJsUrl: `${baseUrl}/veloqr.js`,
+  });
+}
+
+/**
+ * Configure WASM loading with custom URLs or use CDN shortcut
+ *
+ * @param config - Configuration object or 'cdn' shortcut
+ * @param config.wasmUrl - Full URL to the .wasm file (e.g., 'https://cdn.example.com/veloqr_bg.wasm' or '/static/wasm/veloqr_bg.wasm')
+ * @param config.wasmJsUrl - Full URL to the .js wrapper file (optional, defaults to same directory as wasmUrl)
+ * @param config.version - Package version when using CDN (optional, defaults to current version)
+ *
+ * @example
+ * // Load from jsDelivr CDN (shortcut)
+ * configureWasm('cdn');
+ *
+ * @example
+ * // Load from jsDelivr CDN with specific version
+ * configureWasm({ version: '1.0.1' });
+ *
+ * @example
+ * // Load from custom CDN
  * configureWasm({
- *   wasmUrl: 'https://cdn.example.com/rust-qr/pkg/veloqr_bg.wasm',
- *   wasmJsUrl: 'https://cdn.example.com/rust-qr/pkg/veloqr.js'
+ *   wasmUrl: 'https://cdn.example.com/bundle/bin/complete/veloqr_bg.wasm',
+ *   wasmJsUrl: 'https://cdn.example.com/bundle/bin/complete/veloqr.js'
  * });
  *
  * @example
  * // Load from public directory
  * configureWasm({
- *   wasmUrl: '/rust-qr/pkg/veloqr_bg.wasm'
+ *   wasmUrl: '/wasm/veloqr_bg.wasm',
+ *   wasmJsUrl: '/wasm/veloqr.js'
  * });
  */
-export function configureWasm(config: WasmConfig): void {
+export function configureWasm(config: WasmConfig | 'cdn'): void {
+  if (config === 'cdn') {
+    configureWasmFromCDN();
+    return;
+  }
+
+  if (config.version && !config.wasmUrl) {
+    // If only version is specified, use jsDelivr CDN
+    configureWasmFromCDN(config.version);
+    return;
+  }
+
   wasmConfig = { ...config };
   // Reset initialization to force reload with new config
   wasmInitialized = false;

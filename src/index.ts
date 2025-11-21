@@ -8,7 +8,7 @@ export {
   CameraSwitchIconMinimal,
 } from './components/CameraSwitchIcon';
 export { initWasm, decodeQRFromImageData, drawQROverlay } from './utils/qr-processor';
-export { configureWasm, resetWasm } from './utils/wasm-loader';
+export { configureWasm, configureWasmFromCDN, resetWasm } from './utils/wasm-loader';
 export {
   DEFAULT_TEXTS,
   DEFAULT_TEXTS_EN,

@@ -52,6 +52,9 @@ export function drawQROverlay(
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
 
+  // Clear the entire canvas before drawing new overlay
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
   results.forEach((result) => {
     if (result.bounds && result.bounds.length >= 4) {
       ctx.strokeStyle = highlightColor;

@@ -66,7 +66,11 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         canvas.height = video.videoHeight;
       }
 
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      const ctx = canvas.getContext('2d', {
+        alpha: false,
+        desynchronized: true,
+        willReadFrequently: true,
+      });
       if (!ctx) {
         return;
       }

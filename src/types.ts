@@ -7,6 +7,7 @@ export interface QRCodeResult {
 export interface WasmConfig {
   wasmUrl?: string;
   wasmJsUrl?: string;
+  version?: string; // Package version for CDN loading (e.g., '1.0.1', 'latest')
 }
 
 export interface AnimationText {
