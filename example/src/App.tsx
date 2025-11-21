@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { QRScanner, QRImageScanner, QRCodeResult,configureWasm } from 'veloqr';
+import { useState } from 'react';
+import { QRScanner, QRImageScanner, QRCodeResult } from 'veloqr';
 
 type TabType = 'camera' | 'image';
 
@@ -54,7 +54,8 @@ function App() {
               showStatusText: false
             }}
             showCameraSwitch={true}
-            enableFrameMerging={true}
+            enableFrameMerging={false}
+            optimizeForSafari={false}
           />
         ) : (
           <QRImageScanner

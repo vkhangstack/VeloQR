@@ -1,9 +1,11 @@
 import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import typescript from '@rollup/plugin-typescript';
+import json from '@rollup/plugin-json';
 import dts from 'rollup-plugin-dts';
 import peerDepsExternal from 'rollup-plugin-peer-deps-external';
 import postcss from 'rollup-plugin-postcss';
+import copy from 'rollup-plugin-copy';
 import { readFileSync } from 'fs';
 
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -27,6 +29,7 @@ export default [
     ],
     plugins: [
       peerDepsExternal(),
+      json(),
       resolve({
         browser: true,
       }),
@@ -37,6 +40,16 @@ export default [
       }),
       postcss({
         minimize: true,
+      }),
+      copy({
+        targets: [
+          {
+            src: 'rust-qr/pkg/*',
+            dest: 'dist/bundle/bin/complete',
+          },
+        ],
+        hook: 'writeBundle',
+        copyOnce: true,
       }),
     ],
     external: ['react', 'react-dom'],

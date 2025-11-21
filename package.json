@@ -1,6 +1,6 @@
 {
   "name": "@vkhangstack/veloqr",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "type": "module",
   "description": "A high-performance React QR code scanner library using WebAssembly and Rust",
   "main": "dist/index.js",
@@ -13,13 +13,16 @@
   "scripts": {
     "build:wasm": "cd rust-qr && wasm-pack build --target web --out-dir pkg",
     "build:rollup": "rollup -c",
-    "build": "npm run build:wasm && npm run build:rollup",
+    "build": "npm run clean && npm run build:wasm && npm run build:rollup",
     "dev": "rollup -c -w",
+    "clean": "rm -rf dist/",
     "example": "cd example && npm run dev",
     "prepublishOnly": "npm run build",
-    "version:patch": "npm version patch",
-    "version:minor": "npm version minor",
-    "version:major": "npm version major",
+    "version:update": "bash scripts/update-version.sh",
+    "version:patch": "bash scripts/update-version.sh patch",
+    "version:minor": "bash scripts/update-version.sh minor",
+    "version:major": "bash scripts/update-version.sh major",
+    "version:set": "bash scripts/update-version.sh",
     "publish:check": "bash scripts/pre-publish-check.sh",
     "publish:dry": "npm publish --dry-run",
     "publish:npm": "npm publish",
@@ -53,6 +56,7 @@
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-typescript": "^11.1.6",
     "@types/react": "^18.2.48",
@@ -60,11 +64,11 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "rollup": "^4.9.6",
+    "rollup-plugin-copy": "^3.5.0",
     "rollup-plugin-dts": "^6.1.0",
     "rollup-plugin-peer-deps-external": "^2.2.4",
     "rollup-plugin-postcss": "^4.0.2",
     "tslib": "^2.6.2",
     "typescript": "^5.3.3"
-  },
-  "dependencies": {}
+  }
 }
