@@ -10,6 +10,9 @@ import { readFileSync } from 'fs';
 
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
+// Check if building for production (no sourcemaps)
+const isProduction = process.env.NODE_ENV === 'production' || process.env.BUILD_MODE === 'production';
+
 export default [
   {
     input: 'src/index.ts',
@@ -17,13 +20,13 @@ export default [
       {
         file: packageJson.main,
         format: 'cjs',
-        sourcemap: true,
+        sourcemap: !isProduction,
         inlineDynamicImports: true,
       },
       {
         file: packageJson.module,
         format: 'esm',
-        sourcemap: true,
+        sourcemap: !isProduction,
         inlineDynamicImports: true,
       },
     ],
@@ -37,6 +40,9 @@ export default [
       typescript({
         tsconfig: './tsconfig.json',
         exclude: ['**/*.test.ts', '**/*.test.tsx'],
+        compilerOptions: {
+          declarationMap: !isProduction,
+        },
       }),
       postcss({
         minimize: true,
