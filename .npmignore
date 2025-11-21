@@ -1,32 +1,30 @@
 # Source files
 src/
-rust-qr/src/
-rust-qr/target/
-rust-qr/Cargo.toml
-rust-qr/Cargo.lock
+rust-qr/
 
 # Example
 example/
+
+# Development files
+dist/
+node_modules/
+*.log
+.DS_Store
 
 # Config files
 tsconfig.json
 rollup.config.js
 .gitignore
 
-# Development
-node_modules/
-*.log
-.DS_Store
-
 # Documentation
 QUICKSTART.md
 
-#Scripts
+# Scripts
 scripts/
 
-#Include these (whitelist)
-!dist/
-!rust-qr/pkg/
+# Only publish release folder, README, and LICENSE
+# Everything else is ignored by default
+!release/
 !README.md
 !LICENSE
 

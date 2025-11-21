@@ -7,7 +7,8 @@ import { configureWasm } from 'veloqr';
 // Configure WASM to load from public directory
 // This ensures the WASM file is found at the correct path
 configureWasm({
-  wasmUrl: '/rust-qr/pkg/veloqr_bg.wasm'
+  wasmUrl: '/rust-qr/pkg/veloqr_bg.wasm',
+  wasmJsUrl: '/rust-qr/pkg/veloqr.js'
 });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

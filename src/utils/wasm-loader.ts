@@ -99,119 +99,108 @@ export async function loadWasm(): Promise<any> {
     return wasmInstance;
   }
 
-  // Strategy 1: Try custom configured URL (highest priority)
-  if (wasmConfig.wasmUrl) {
-    try {
-      console.log('Attempting to load WASM from configured URL:', wasmConfig.wasmUrl);
-
-      // Fetch the WASM file
-      const response = await fetch(wasmConfig.wasmUrl);
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      // Verify content type
-      const contentType = response.headers.get('content-type');
-      if (contentType && !contentType.includes('application/wasm') && !contentType.includes('application/octet-stream')) {
-        console.warn(`Warning: WASM file served with content-type: ${contentType}. Expected 'application/wasm' or 'application/octet-stream'`);
-      }
-
-      const wasmBytes = await response.arrayBuffer();
-
-      // Verify this is actually a WASM file (check magic bytes)
-      const magicBytes = new Uint8Array(wasmBytes.slice(0, 4));
-      if (magicBytes[0] !== 0x00 || magicBytes[1] !== 0x61 || magicBytes[2] !== 0x73 || magicBytes[3] !== 0x6d) {
-        throw new Error('Invalid WASM file: Magic bytes do not match. The file may be served incorrectly (possibly as HTML).');
-      }
-
-      // Load the JS wrapper
-      let wasmModule;
-      if (wasmConfig.wasmJsUrl) {
-        // Dynamic import from custom URL requires special handling
-        wasmModule = await import(/* @vite-ignore */ wasmConfig.wasmJsUrl);
-      } else {
-        // Default to relative import
-        wasmModule = await import('../../rust-qr/pkg/veloqr.js');
-      }
-
-      await wasmModule.default(wasmBytes);
-      wasmInstance = wasmModule;
-      wasmInitialized = true;
-      console.log('WASM loaded successfully from configured URL');
-      return wasmModule;
-    } catch (error) {
-      console.error('Failed to load WASM from configured URL:', error);
-      throw new Error(
-        'Failed to load WASM from configured URL.\n' +
-        'Error: ' + (error as Error).message + '\n\n' +
-        'Please ensure:\n' +
-        '1. The WASM URL is correct and accessible\n' +
-        '2. Your server serves .wasm files with correct MIME type (application/wasm)\n' +
-        '3. CORS is properly configured if loading from a different origin'
-      );
-    }
+  // If no config specified, default to CDN
+  if (!wasmConfig.wasmUrl) {
+    configureWasmFromCDN();
   }
 
-  // Strategy 2: Try direct import (works with Vite in dev mode)
+  // Load from configured URL
   try {
-    const wasmModule = await import('../../rust-qr/pkg/veloqr.js');
-    await wasmModule.default();
-    wasmInstance = wasmModule;
-    wasmInitialized = true;
-    console.log('WASM loaded via direct import');
-    return wasmModule;
-  } catch (error) {
-    console.warn('Direct import failed, trying alternative methods...', error);
-  }
+    console.log('Attempting to load WASM from:', wasmConfig.wasmUrl);
 
-  // Strategy 3: Try loading from public directory (works in production)
-  try {
-    const wasmUrl = new URL('../../rust-qr/pkg/veloqr_bg.wasm', import.meta.url);
-    const wasmModule = await import('../../rust-qr/pkg/veloqr.js');
-
-    const response = await fetch(wasmUrl);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    // Fetch the WASM file
+    const wasmResponse = await fetch(wasmConfig.wasmUrl!);
+    if (!wasmResponse.ok) {
+      throw new Error(`HTTP ${wasmResponse.status}: ${wasmResponse.statusText}`);
     }
 
-    const wasmBytes = await response.arrayBuffer();
-    await wasmModule.default(wasmBytes);
+    // Verify content type
+    const contentType = wasmResponse.headers.get('content-type');
+    if (contentType && !contentType.includes('application/wasm') && !contentType.includes('application/octet-stream')) {
+      console.warn(`Warning: WASM file served with content-type: ${contentType}. Expected 'application/wasm' or 'application/octet-stream'`);
+    }
+
+    const wasmBytes = await wasmResponse.arrayBuffer();
+
+    // Verify this is actually a WASM file (check magic bytes)
+    const magicBytes = new Uint8Array(wasmBytes.slice(0, 4));
+    if (magicBytes[0] !== 0x00 || magicBytes[1] !== 0x61 || magicBytes[2] !== 0x73 || magicBytes[3] !== 0x6d) {
+      throw new Error('Invalid WASM file: Magic bytes do not match. The file may be served incorrectly (possibly as HTML).');
+    }
+
+    // Fetch and execute the JS wrapper
+    if (!wasmConfig.wasmJsUrl) {
+      throw new Error('wasmJsUrl is required');
+    }
+
+    const jsResponse = await fetch(wasmConfig.wasmJsUrl);
+    if (!jsResponse.ok) {
+      throw new Error(`Failed to load JS wrapper: HTTP ${jsResponse.status}`);
+    }
+
+    // Execute the JS wrapper code
+    const jsCode = await jsResponse.text();
+    const wasmModule = await executeWasmJs(jsCode, wasmBytes);
 
     wasmInstance = wasmModule;
     wasmInitialized = true;
-    console.log('WASM loaded via URL import');
+    console.log('WASM loaded successfully from:', wasmConfig.wasmUrl);
     return wasmModule;
   } catch (error) {
-    console.warn('URL import failed, trying fetch fallback...', error);
-  }
-
-  // Strategy 4: Try fetching from public path
-  try {
-    const response = await fetch('/rust-qr/pkg/veloqr_bg.wasm');
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const wasmBytes = await response.arrayBuffer();
-    const wasmModule = await import('../../rust-qr/pkg/veloqr.js');
-    await wasmModule.default(wasmBytes);
-
-    wasmInstance = wasmModule;
-    wasmInitialized = true;
-    console.log('WASM loaded from public path');
-    return wasmModule;
-  } catch (error) {
-    console.error('All WASM loading strategies failed:', error);
+    console.error('Failed to load WASM:', error);
     throw new Error(
-      'Failed to load WASM module. Please ensure:\n' +
-      '1. The rust-qr/pkg directory is built (run: npm run build:wasm)\n' +
-      '2. WASM files are accessible to your bundler\n' +
-      '3. Your server serves .wasm files with correct MIME type (application/wasm)\n' +
-      '4. Or use configureWasm() to specify a custom WASM URL\n\n' +
+      'Failed to load WASM module.\n' +
+      'Error: ' + (error as Error).message + '\n\n' +
+      'Please ensure:\n' +
+      '1. The WASM URL is correct and accessible\n' +
+      '2. Your server serves .wasm files with correct MIME type (application/wasm)\n' +
+      '3. CORS is properly configured if loading from a different origin\n\n' +
+      'By default, WASM loads from jsDelivr CDN.\n' +
+      'To use a custom location, call configureWasm() before using the scanner:\n\n' +
       'Example:\n' +
-      'import { configureWasm } from "veloqr";\n' +
-      'configureWasm({ wasmUrl: "/path/to/veloqr_bg.wasm" });\n\n' +
-      'Error: ' + (error as Error).message
+      'import { configureWasm } from "@vkhangstack/veloqr";\n' +
+      'configureWasm({\n' +
+      '  wasmUrl: "/wasm/veloqr_bg.wasm",\n' +
+      '  wasmJsUrl: "/wasm/veloqr.js"\n' +
+      '});'
     );
+  }
+}
+
+// Execute WASM JS wrapper code using Function constructor
+async function executeWasmJs(jsCode: string, wasmBytes: ArrayBuffer): Promise<any> {
+  // Wrap the WASM JS code to export it properly
+  const wrappedCode = `
+    ${jsCode}
+    return {
+      default: init,
+      decode_qr_from_image,
+      __wbg_set_wasm
+    };
+  `;
+
+  try {
+    // Create a function that returns the WASM module
+    const moduleFactory = new Function('WebAssembly', wrappedCode);
+    const wasmModule = moduleFactory(WebAssembly);
+
+    // Initialize with WASM bytes
+    await wasmModule.default(wasmBytes);
+
+    return wasmModule;
+  } catch (error) {
+    // If Function constructor fails, try dynamic import as fallback
+    const blob = new Blob([jsCode], { type: 'application/javascript' });
+    const blobUrl = URL.createObjectURL(blob);
+
+    try {
+      const dynamicModule = await (new Function('url', 'return import(url)'))(blobUrl);
+      await dynamicModule.default(wasmBytes);
+      URL.revokeObjectURL(blobUrl);
+      return dynamicModule;
+    } catch (fallbackError) {
+      URL.revokeObjectURL(blobUrl);
+      throw fallbackError;
+    }
   }
 }
