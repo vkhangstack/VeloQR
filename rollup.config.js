@@ -62,6 +62,10 @@ export default [
             dest: 'release/bundle/bin/complete',
           },
           {
+            src: 'public/worker.js',
+            dest: 'release/bundle/bin/complete',
+          },
+          {
             src: 'LICENSE',
             dest: 'release',
           },

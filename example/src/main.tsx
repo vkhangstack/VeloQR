@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './index.css';
-import { configureWasm } from 'veloqr';
+import { configureWasm } from '@vkhangstack/veloqr';
 
 // Configure WASM to load from public directory
 // This ensures the WASM file is found at the correct path

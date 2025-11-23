@@ -7,6 +7,12 @@ export default defineConfig({
     port: 3000,
     host: true,
     allowedHosts: true,
+    hmr: {
+      overlay: true,
+      protocol: 'ws',
+      host: 'localhost',
+      port: 3000,
+    },
     fs: {
       allow: ['..'],
     },

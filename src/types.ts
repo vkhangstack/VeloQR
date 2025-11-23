@@ -10,6 +10,11 @@ export interface WasmConfig {
   version?: string; // Package version for CDN loading (e.g., '1.0.1', 'latest')
 }
 
+export interface WorkerConfig {
+  workerUrl?: string; // Full URL to the worker.js file
+  version?: string; // Package version for CDN loading (e.g., '1.0.1', 'latest')
+}
+
 export interface AnimationText {
   scanning?: string;
   detected?: string;

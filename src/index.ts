@@ -7,8 +7,8 @@ export {
   CameraSwitchIconFlip,
   CameraSwitchIconMinimal,
 } from './components/CameraSwitchIcon';
-export { initWasm, decodeQRFromImageData, drawQROverlay } from './utils/qr-processor';
-export { configureWasm, configureWasmFromCDN, resetWasm } from './utils/wasm-loader';
+export { initWasm, decodeQRFromImageData, drawQROverlay, configureWorker, configureWorkerFromCDN, getWorkerConfig, cleanup } from './utils/qr-processor';
+export { configureWasm, configureWasmFromCDN, resetWasm, getWasmConfig } from './utils/wasm-loader';
 export {
   DEFAULT_TEXTS,
   DEFAULT_TEXTS_EN,
@@ -50,6 +50,7 @@ export type {
   AnimationText,
   AnimationConfig,
   WasmConfig,
+  WorkerConfig,
   CameraDevice,
 } from './types';
 export type { SupportedLanguage } from './constants/defaultTexts';
