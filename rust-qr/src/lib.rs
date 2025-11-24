@@ -101,3 +101,185 @@ fn rgba_to_gray(rgba: &[u8], width: u32, height: u32) -> Result<GrayImage, Strin
 pub fn init() {
     console_log!("QR Scanner WASM module initialized");
 }
+
+// ==================== MRZ Parsing Implementation ====================
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MRZResult {
+    pub document_type: String,  // TD1, TD2, or TD3
+    pub document_number: String,
+    pub date_of_birth: String,
+    pub date_of_expiry: String,
+    pub nationality: String,
+    pub sex: String,
+    pub surname: String,
+    pub given_names: String,
+    pub optional_data: String,
+    pub issuing_country: String,
+    pub raw_mrz: Vec<String>,
+    pub confidence: f32,
+}
+
+/// Parse MRZ text lines to extract structured data
+#[wasm_bindgen]
+pub fn parse_mrz_text(mrz_text: &str) -> Result<JsValue, JsValue> {
+    console_log!("Parsing MRZ text: {}", mrz_text);
+
+    // Split into lines and clean up
+    let mrz_lines: Vec<String> = mrz_text
+        .lines()
+        .map(|l| l.trim().to_uppercase().replace(" ", ""))
+        .filter(|l| !l.is_empty() && l.len() >= 20)
+        .collect();
+
+    console_log!("Cleaned MRZ lines: {:?}", mrz_lines);
+
+    if mrz_lines.is_empty() {
+        return Err(JsValue::from_str("No valid MRZ lines found"));
+    }
+
+    // Parse MRZ based on format
+    let result = parse_mrz_from_lines(&mrz_lines)
+        .map_err(|e| JsValue::from_str(&format!("Failed to parse MRZ: {}", e)))?;
+
+    serde_wasm_bindgen::to_value(&result)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Parse MRZ lines based on format (TD1, TD2, or TD3)
+fn parse_mrz_from_lines(lines: &[String]) -> Result<MRZResult, String> {
+    if lines.is_empty() {
+        return Err("No MRZ lines found".to_string());
+    }
+
+    // Determine MRZ format based on line count and length
+    match lines.len() {
+        2 => {
+            // Could be TD2 or TD3
+            if lines[0].len() >= 40 {
+                parse_td3(lines)
+            } else {
+                parse_td2(lines)
+            }
+        }
+        3 => parse_td1(lines),
+        _ => Err(format!("Invalid MRZ format: {} lines", lines.len())),
+    }
+}
+
+/// Parse TD1 format (ID cards: 3 lines of 30 characters)
+fn parse_td1(lines: &[String]) -> Result<MRZResult, String> {
+    if lines.len() != 3 {
+        return Err("TD1 requires 3 lines".to_string());
+    }
+
+    let line1 = pad_line(&lines[0], 30);
+    let line2 = pad_line(&lines[1], 30);
+    let line3 = pad_line(&lines[2], 30);
+
+    Ok(MRZResult {
+        document_type: "TD1".to_string(),
+        document_number: extract_field(&line1, 5, 14).trim_end_matches('<').to_string(),
+        issuing_country: extract_field(&line1, 2, 5).to_string(),
+        date_of_birth: extract_field(&line2, 0, 6).replace('O', "0"),
+        sex: extract_field(&line2, 7, 8).to_string(),
+        date_of_expiry: extract_field(&line2, 8, 14).to_string(),
+        nationality: extract_field(&line2, 15, 18).to_string(),
+        optional_data: extract_field(&line1, 15, 30).trim_end_matches('<').to_string(),
+        surname: extract_names(&line3).0,
+        given_names: extract_names(&line3).1,
+        raw_mrz: vec![line1, line2, line3],
+        confidence: 0.75,
+    })
+}
+
+/// Parse TD2 format (Official documents: 2 lines of 36 characters)
+fn parse_td2(lines: &[String]) -> Result<MRZResult, String> {
+    if lines.len() != 2 {
+        return Err("TD2 requires 2 lines".to_string());
+    }
+
+    let line1 = pad_line(&lines[0], 36);
+    let line2 = pad_line(&lines[1], 36);
+
+    let names = extract_names(&extract_field(&line1, 5, 36));
+
+    Ok(MRZResult {
+        document_type: "TD2".to_string(),
+        issuing_country: extract_field(&line1, 2, 5).to_string(),
+        surname: names.0,
+        given_names: names.1,
+        document_number: extract_field(&line2, 0, 9).trim_end_matches('<').to_string(),
+        nationality: extract_field(&line2, 10, 13).to_string(),
+        date_of_birth: extract_field(&line2, 13, 19).replace('O', "0"),
+        sex: extract_field(&line2, 20, 21).to_string(),
+        date_of_expiry: extract_field(&line2, 21, 27).to_string(),
+        optional_data: extract_field(&line2, 28, 35).trim_end_matches('<').to_string(),
+        raw_mrz: vec![line1, line2],
+        confidence: 0.75,
+    })
+}
+
+/// Parse TD3 format (Passports: 2 lines of 44 characters)
+fn parse_td3(lines: &[String]) -> Result<MRZResult, String> {
+    if lines.len() != 2 {
+        return Err("TD3 requires 2 lines".to_string());
+    }
+
+    let line1 = pad_line(&lines[0], 44);
+    let line2 = pad_line(&lines[1], 44);
+
+    let names = extract_names(&extract_field(&line1, 5, 44));
+
+    Ok(MRZResult {
+        document_type: "TD3".to_string(),
+        issuing_country: extract_field(&line1, 2, 5).to_string(),
+        surname: names.0,
+        given_names: names.1,
+        document_number: extract_field(&line2, 0, 9).trim_end_matches('<').to_string(),
+        nationality: extract_field(&line2, 10, 13).to_string(),
+        date_of_birth: extract_field(&line2, 13, 19).replace('O', "0"),
+        sex: extract_field(&line2, 20, 21).to_string(),
+        date_of_expiry: extract_field(&line2, 21, 27).to_string(),
+        optional_data: extract_field(&line2, 28, 42).trim_end_matches('<').to_string(),
+        raw_mrz: vec![line1, line2],
+        confidence: 0.75,
+    })
+}
+
+/// Pad or trim a line to the specified length
+fn pad_line(line: &str, length: usize) -> String {
+    if line.len() >= length {
+        line[..length].to_string()
+    } else {
+        format!("{:<width$}", line, width = length)
+    }
+}
+
+/// Extract a field from a line
+fn extract_field(line: &str, start: usize, end: usize) -> String {
+    if start >= line.len() {
+        return String::new();
+    }
+    let end = end.min(line.len());
+    line[start..end].to_string()
+}
+
+/// Extract surname and given names from name field
+fn extract_names(name_field: &str) -> (String, String) {
+    let parts: Vec<&str> = name_field.split("<<").collect();
+
+    let surname = if let Some(s) = parts.get(0) {
+        s.replace('<', " ").trim().replace('0', "O")
+    } else {
+        String::new()
+    };
+
+    let given_names = if let Some(s) = parts.get(1) {
+        s.replace('<', " ").trim().replace('0', "O")
+    } else {
+        String::new()
+    };
+
+    (surname, given_names)
+}

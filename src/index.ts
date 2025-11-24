@@ -1,13 +1,20 @@
 export { QRScanner } from './QRScanner';
 export { QRImageScanner } from './QRImageScanner';
 export { useQRScanner } from './hooks/useQRScanner';
+export { MRZScanner } from './MRZScanner';
+export { MRZImageScanner } from './MRZImageScanner';
+export { useMRZScanner } from './hooks/useMRZScanner';
 export {
   CameraSwitchIcon,
   CameraSwitchIconSimple,
   CameraSwitchIconFlip,
   CameraSwitchIconMinimal,
 } from './components/CameraSwitchIcon';
+export { MRZScanningAnimation } from './components/MRZScanningAnimation';
+export { MRZImageProcessingAnimation } from './components/MRZImageProcessingAnimation';
+export { getMRZAnimationStyles } from './components/MRZAnimationStyles';
 export { initWasm, decodeQRFromImageData, drawQROverlay, configureWorker, configureWorkerFromCDN, getWorkerConfig, cleanup } from './utils/qr-processor';
+export { initWasm as initMRZWasm, decodeMRZFromImageData, drawMRZOverlay, formatMRZDate, validateCheckDigit, validateMRZ, cleanup as cleanupMRZ } from './utils/mrz-processor';
 export { configureWasm, configureWasmFromCDN, resetWasm, getWasmConfig } from './utils/wasm-loader';
 export {
   DEFAULT_TEXTS,
@@ -47,6 +54,11 @@ export type {
   QRImageScannerProps,
   UseQRScannerOptions,
   UseQRScannerReturn,
+  MRZResult,
+  MRZScannerProps,
+  MRZImageScannerProps,
+  UseMRZScannerOptions,
+  UseMRZScannerReturn,
   AnimationText,
   AnimationConfig,
   WasmConfig,
@@ -55,3 +67,5 @@ export type {
 } from './types';
 export type { SupportedLanguage } from './constants/defaultTexts';
 export type { CameraCapabilities } from './utils/camera-manager';
+export type { MRZScanningAnimationProps } from './components/MRZScanningAnimation';
+export type { MRZImageProcessingAnimationProps } from './components/MRZImageProcessingAnimation';

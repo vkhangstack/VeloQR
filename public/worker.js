@@ -63,6 +63,21 @@ function decodeQRCode(imageData) {
   }
 }
 
+// Extract MRZ from image data
+function extractMRZ(textData) {
+  if (!isInitialized || !wasmModule) {
+    throw new Error('WASM not initialized');
+  }
+
+  try {
+    const results = wasmModule.parse_mrz_text(textData);
+    return results || {};
+  } catch (error) {
+    console.error('[Worker] MRZ extraction error:', error);
+    return {};
+  }
+}
+
 // Message handler
 self.onmessage = async function(e) {
   const { type, id, payload } = e.data;
@@ -84,6 +99,16 @@ self.onmessage = async function(e) {
         const results = decodeQRCode(payload.imageData);
         self.postMessage({
           type: 'decode-response',
+          id,
+          results
+        });
+        break;
+      }
+      
+      case 'extract-mrz': {
+        const results = extractMRZ(payload.textData);
+        self.postMessage({
+          type: 'extract-mrz-response',
           id,
           results
         });

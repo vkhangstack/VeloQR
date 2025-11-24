@@ -9,6 +9,10 @@ export function decode_qr_from_image(image_data: Uint8Array, width: number, heig
  * Initialize the WASM module
  */
 export function init(): void;
+/**
+ * Parse MRZ text lines to extract structured data
+ */
+export function parse_mrz_text(mrz_text: string): any;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
@@ -16,9 +20,11 @@ export interface InitOutput {
   readonly memory: WebAssembly.Memory;
   readonly decode_qr_from_image: (a: number, b: number, c: number, d: number) => [number, number, number];
   readonly init: () => void;
+  readonly parse_mrz_text: (a: number, b: number) => [number, number, number];
   readonly __wbindgen_externrefs: WebAssembly.Table;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __externref_table_dealloc: (a: number) => void;
+  readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
   readonly __wbindgen_start: () => void;
 }
 

@@ -1,8 +1,8 @@
 {
   "name": "@vkhangstack/veloqr",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "type": "module",
-  "description": "A high-performance React QR code scanner library using WebAssembly and Rust",
+  "description": "A high-performance React QR code and MRZ (passport/ID card) scanner library using WebAssembly, Rust",
   "main": "release/index.js",
   "module": "release/index.esm.js",
   "types": "release/index.d.ts",
@@ -35,6 +35,10 @@
     "react",
     "qr-code",
     "qr-scanner",
+    "mrz",
+    "passport-scanner",
+    "id-card",
+    "ocr",
     "webassembly",
     "wasm",
     "rust",
@@ -73,5 +77,8 @@
     "rollup-plugin-postcss": "^4.0.2",
     "tslib": "^2.6.2",
     "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "tesseract.js": "^6.0.1"
   }
 }

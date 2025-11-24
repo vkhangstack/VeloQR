@@ -5,10 +5,15 @@ A high-performance React library for scanning QR codes using WebAssembly and Rus
 ## Features
 
 - **High Performance**: Powered by WebAssembly compiled from Rust for near-native speed
-- **Live Camera Scanning**: Real-time QR code detection from webcam or device camera
-- **Image File Scanning**: Scan QR codes from uploaded image files
+- **QR Code Scanning**: Real-time QR code detection from webcam or device camera
+- **MRZ Reading**: NEW! Passport and ID card MRZ (Machine Readable Zone) scanning support
+  - TD1 (ID cards), TD2 (travel documents), and TD3 (passports)
+  - Automatic document type detection
+  - Full data extraction (name, DOB, nationality, document number, etc.)
+- **Live Camera Scanning**: Real-time detection from webcam or device camera
+- **Image File Scanning**: Scan QR codes and MRZ from uploaded image files
 - **Multiple QR Detection**: Detect and decode multiple QR codes in a single frame
-- **Animated Feedback**: Beautiful scanning and detection animations with Vietnamese text
+- **Animated Feedback**: Beautiful scanning and detection animations
 - **Custom Styling**: Fully customizable UI with styling props and overlay options
 - **TypeScript Support**: Full TypeScript definitions included
 - **Lightweight**: Optimized WASM binary for minimal bundle size
@@ -136,6 +141,165 @@ function App() {
 }
 
 export default App;
+```
+
+### MRZ (Machine Readable Zone) Scanning
+
+VeloQR now includes powerful MRZ scanning capabilities for passports and ID cards!
+
+#### Live MRZ Camera Scanning
+
+```tsx
+import React from 'react';
+import { MRZScanner, MRZResult } from '@vkhangstack/veloqr';
+
+function App() {
+  const handleScan = (result: MRZResult) => {
+    console.log('MRZ detected:', result);
+    console.log('Document Type:', result.documentType); // TD1, TD2, or TD3
+    console.log('Document Number:', result.documentNumber);
+    console.log('Name:', result.surname, result.givenNames);
+    console.log('Date of Birth:', result.dateOfBirth);
+    console.log('Nationality:', result.nationality);
+  };
+
+  const handleError = (error: Error) => {
+    console.error('MRZ Scanner error:', error);
+  };
+
+  return (
+    <MRZScanner
+      onScan={handleScan}
+      onError={handleError}
+      scanDelay={500}
+      showOverlay={true}
+      highlightColor="#00ff00"
+      showCameraSwitch={true}
+    />
+  );
+}
+
+export default App;
+```
+
+#### MRZ Image File Scanning
+
+```tsx
+import React from 'react';
+import { MRZImageScanner, MRZResult } from '@vkhangstack/veloqr';
+
+function App() {
+  const handleScan = (result: MRZResult) => {
+    console.log('MRZ found in image:', result);
+    // Process the MRZ data
+  };
+
+  const handleError = (error: Error) => {
+    console.error('Scanner error:', error);
+  };
+
+  return (
+    <MRZImageScanner
+      onScan={handleScan}
+      onError={handleError}
+      showPreview={true}
+      acceptedFormats={['image/png', 'image/jpeg', 'image/jpg']}
+    />
+  );
+}
+
+export default App;
+```
+
+#### MRZ Result Structure
+
+```typescript
+interface MRZResult {
+  documentType: string;      // TD1, TD2, or TD3
+  documentNumber: string;     // Passport/ID number
+  dateOfBirth: string;        // YYMMDD format
+  dateOfExpiry: string;       // YYMMDD format
+  nationality: string;        // 3-letter country code
+  sex: string;               // M, F, or X
+  surname: string;           // Last name(s)
+  givenNames: string;        // First and middle names
+  optionalData: string;      // Additional data (if any)
+  issuingCountry: string;    // 3-letter country code
+  rawMrz: string[];         // Raw MRZ lines
+  confidence: number;        // Recognition confidence (0-1)
+  bounds?: {                // Bounding box (if detected)
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+```
+
+#### Supported Document Types
+
+- **TD1**: ID cards (3 lines of 30 characters)
+- **TD2**: Official travel documents (2 lines of 36 characters)
+- **TD3**: Passports (2 lines of 44 characters)
+
+#### MRZ Utility Functions
+
+```tsx
+import { formatMRZDate, validateMRZ, validateCheckDigit } from '@vkhangstack/veloqr';
+
+// Format MRZ date (YYMMDD) to readable format (YYYY-MM-DD)
+const formattedDate = formatMRZDate('900815'); // Returns: "1990-08-15"
+
+// Validate MRZ result
+const validation = validateMRZ(mrzResult);
+console.log('Is valid:', validation.isValid);
+console.log('Errors:', validation.errors);
+
+// Validate check digit
+const isValid = validateCheckDigit('AB2134<<<', '5');
+```
+
+#### Using the MRZ Hook
+
+For advanced use cases, you can use the `useMRZScanner` hook directly:
+
+```tsx
+import React, { useEffect } from 'react';
+import { useMRZScanner } from '@vkhangstack/veloqr';
+
+function CustomMRZScanner() {
+  const {
+    videoRef,
+    canvasRef,
+    isScanning,
+    startScanning,
+    stopScanning,
+    lastResult,
+    error,
+  } = useMRZScanner({
+    scanDelay: 500,
+    onScan: (result) => console.log('MRZ:', result),
+    onError: (err) => console.error('Error:', err),
+  });
+
+  useEffect(() => {
+    startScanning();
+    return () => stopScanning();
+  }, []);
+
+  return (
+    <div>
+      <video ref={videoRef} />
+      <canvas ref={canvasRef} />
+      {lastResult && (
+        <div>
+          <p>Name: {lastResult.surname}, {lastResult.givenNames}</p>
+          <p>Document: {lastResult.documentNumber}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 ```
 
 ### Custom Text and Internationalization

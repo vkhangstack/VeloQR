@@ -1,26 +1,22 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice } from '../types';
-import { initWasm, decodeQRFromImageData } from '../utils/qr-processor';
-import { getCameraDevices, identifyCameras } from '../utils/camera-manager';
+import { MRZResult, UseMRZScannerOptions, UseMRZScannerReturn, CameraDevice } from '../types';
+import { initWasm, decodeMRZFromImageData } from '../utils/mrz-processor';
+import { getCameraDevices } from '../utils/camera-manager';
 import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
-import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
 
-export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerReturn {
+export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScannerReturn {
   const {
-    scanDelay = 500,
+    scanDelay = 1000,
     onScan,
     onError,
     videoConstraints = {},
-    enableFrameMerging = false,
-    frameMergeCount = 3,
-    optimizeForSafari = isSafariOrIOS(),
     preferredCamera = 'environment',
   } = options;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const [lastResults, setLastResults] = useState<QRCodeResult[]>([]);
+  const [lastResult, setLastResult] = useState<MRZResult | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [availableCameras, setAvailableCameras] = useState<CameraDevice[]>([]);
   const [currentCamera, setCurrentCamera] = useState<CameraDevice | null>(null);
@@ -29,20 +25,18 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   const scanIntervalRef = useRef<number | null>(null);
   const wasmInitializedRef = useRef(false);
   const isScanningRef = useRef(false);
-  const frameBufferRef = useRef<FrameBuffer | null>(null);
-
-  // Initialize frame buffer if frame merging is enabled
-  useEffect(() => {
-    if (enableFrameMerging && !frameBufferRef.current) {
-      frameBufferRef.current = new FrameBuffer(frameMergeCount);
-    } else if (!enableFrameMerging && frameBufferRef.current) {
-      frameBufferRef.current = null;
-    }
-  }, [enableFrameMerging, frameMergeCount]);
+  const canvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
+  const lastScanTimeRef = useRef<number>(0);
 
   const scan = useCallback(async () => {
     // Skip if already scanning to prevent concurrent scans
     if (isScanningRef.current) {
+      return;
+    }
+
+    // Throttle scans
+    const now = Date.now();
+    if (now - lastScanTimeRef.current < scanDelay) {
       return;
     }
 
@@ -58,63 +52,74 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     }
 
     isScanningRef.current = true;
+    lastScanTimeRef.current = now;
 
     try {
-      // Set canvas dimensions only once or when needed
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+      // MRZ Optimization: Resize and crop bottom area
+      const MAX_WIDTH = 800;
+      const CROP_RATIO = 0.5; // Crop bottom 50% where MRZ is located
+
+      const videoWidth = video.videoWidth;
+      const videoHeight = video.videoHeight;
+
+      // Calculate resize dimensions
+      const scale = Math.min(MAX_WIDTH / videoWidth, 1);
+      const scaledWidth = Math.floor(videoWidth * scale);
+      const scaledHeight = Math.floor(videoHeight * scale);
+
+      // Calculate crop area (bottom portion)
+      const cropStartY = Math.floor(scaledHeight * CROP_RATIO);
+      const cropHeight = scaledHeight - cropStartY;
+
+      // Set canvas to cropped dimensions
+      if (canvas.width !== scaledWidth || canvas.height !== cropHeight) {
+        canvas.width = scaledWidth;
+        canvas.height = cropHeight;
+        // Reset context cache when dimensions change
+        canvasContextRef.current = null;
       }
 
-      const ctx = canvas.getContext('2d', {
-        alpha: false,
-        desynchronized: true,
-        willReadFrequently: true,
-      });
+      // Get or create cached context
+      if (!canvasContextRef.current) {
+        canvasContextRef.current = canvas.getContext('2d', {
+          alpha: false,
+          desynchronized: true,
+          willReadFrequently: true,
+        });
+      }
+
+      const ctx = canvasContextRef.current;
       if (!ctx) {
         return;
       }
 
-      // Draw video frame to canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Draw video frame to canvas with resize and crop
+      // drawImage(source, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+      ctx.drawImage(
+        video,
+        0, videoHeight * CROP_RATIO, videoWidth, videoHeight * (1 - CROP_RATIO), // Source crop
+        0, 0, scaledWidth, cropHeight // Destination
+      );
 
-      // Get image data from canvas
-      let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      // Get image data from cropped canvas
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      // Apply Safari optimization if enabled
-      if (optimizeForSafari) {
-        imageData = optimizeFrameForSafari(imageData);
-      }
+      // Decode MRZ
+      const result = await decodeMRZFromImageData(imageData);
 
-      // Apply frame merging if enabled
-      if (enableFrameMerging && frameBufferRef.current) {
-        frameBufferRef.current.addFrame(imageData);
-        const mergedFrame = frameBufferRef.current.getMergedFrame();
-        if (mergedFrame) {
-          imageData = mergedFrame;
-        }
-      }
-
-      // Decode QR codes
-      const results = await decodeQRFromImageData(imageData);
-
-      if (results.length > 0) {
-         // vibrate if supported
-        if (navigator.vibrate) {
-          navigator.vibrate(100);
-        }
-        setLastResults(results);
-        onScan?.(results);
+      if (result) {
+        setLastResult(result);
+        onScan?.(result);
       }
     } catch (err) {
-      console.error('Scan error:', err);
+      console.error('MRZ scan error:', err);
       const scanError = err instanceof Error ? err : new Error('Unknown scan error');
       setError(scanError);
       onError?.(scanError);
     } finally {
       isScanningRef.current = false;
     }
-  }, [isScanning, onScan, onError, enableFrameMerging, optimizeForSafari]);
+  }, [isScanning, onScan, onError, scanDelay]);
 
   const getFacingMode = useCallback((camera: string): 'user' | 'environment' => {
     if (camera === 'front' || camera === 'user') {
@@ -137,17 +142,17 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
 
       const facingMode = getFacingMode(cameraFacing || preferredCamera);
 
-      // Build video constraints
+      // Build video constraints with higher resolution for MRZ
       let constraints: MediaTrackConstraints = {
         facingMode,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
         frameRate: { ideal: 30, max: 30 },
         ...videoConstraints,
       };
 
-      // Apply Safari optimizations if enabled
-      if (optimizeForSafari) {
+      // Apply Safari optimizations if needed
+      if (isSafariOrIOS()) {
         constraints = getSafariOptimizedConstraints(constraints);
       }
 
@@ -194,7 +199,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
           }, 5000);
         });
 
-        // Now play the video - handle the promise properly
+        // Now play the video
         try {
           await video.play();
         } catch (playError: any) {
@@ -216,7 +221,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       onError?.(startError);
       throw startError;
     }
-  }, [scan, scanDelay, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode]);
+  }, [scan, scanDelay, onError, videoConstraints, preferredCamera, getFacingMode]);
 
   const stopScanning = useCallback(() => {
     setIsScanning(false);
@@ -236,11 +241,6 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     // Clear video source
     if (videoRef.current) {
       videoRef.current.srcObject = null;
-    }
-
-    // Clear frame buffer
-    if (frameBufferRef.current) {
-      frameBufferRef.current.clear();
     }
   }, []);
 
@@ -291,7 +291,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     switchCamera,
     availableCameras,
     currentCamera,
-    lastResults,
+    lastResult,
     error,
   };
 }
