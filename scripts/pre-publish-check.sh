@@ -54,7 +54,7 @@ fi
 
 echo ""
 echo "3. Checking for required files..."
-REQUIRED_FILES=("package.json" "README.md" "LICENSE" "dist/index.js" "dist/index.d.ts" "rust-qr/pkg/veloqr_bg.wasm")
+REQUIRED_FILES=("package.json" "README.md" "LICENSE" "release/index.js" "release/index.d.ts" "rust-qr/pkg/veloqr_bg.wasm")
 
 for file in "${REQUIRED_FILES[@]}"; do
     if [ -f "$file" ]; then
@@ -89,12 +89,12 @@ check_package_field "repository.url"
 
 echo ""
 echo "5. Checking build artifacts..."
-if [ -d "dist" ] && [ "$(ls -A dist)" ]; then
-    print_success "dist/ directory exists and is not empty"
-    echo "   Files in dist/:"
-    ls -lh dist/ | grep -v "^total" | awk '{print "   - " $9 " (" $5 ")"}'
+if [ -d "release" ] && [ "$(ls -A release)" ]; then
+    print_success "release/ directory exists and is not empty"
+    echo "   Files in release/:"
+    ls -lh release/ | grep -v "^total" | awk '{print "   - " $9 " (" $5 ")"}'
 else
-    print_error "dist/ directory is missing or empty. Run: npm run build"
+    print_error "release/ directory is missing or empty. Run: npm run build"
 fi
 
 if [ -d "rust-qr/pkg" ] && [ -f "rust-qr/pkg/veloqr_bg.wasm" ]; then

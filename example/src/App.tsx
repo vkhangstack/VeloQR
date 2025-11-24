@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { QRScanner, QRImageScanner, QRCodeResult } from 'veloqr';
+import { useState, useEffect } from 'react';
+import { QRScanner, QRImageScanner, QRCodeResult, configureWorker } from '@vkhangstack/veloqr';
 
 type TabType = 'camera' | 'image';
 
@@ -7,6 +7,12 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('camera');
   const [results, setResults] = useState<QRCodeResult[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Configure Web Worker on mount
+  useEffect(() => {
+    configureWorker(true, { workerUrl: '/worker.js' });
+    console.log('Web Worker enabled for QR processing');
+  }, []);
 
   const handleScan = (scannedResults: QRCodeResult[]) => {
     console.log('QR Codes detected:', scannedResults);

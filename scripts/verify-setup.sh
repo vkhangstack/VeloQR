@@ -49,7 +49,7 @@ fi
 
 # Check library build
 echo "✓ Checking library build..."
-if [ -f "dist/index.js" ] && [ -f "dist/index.esm.js" ]; then
+if [ -f "release/index.js" ] && [ -f "release/index.esm.js" ]; then
     echo "  Library bundles found"
 else
     echo "  ✗ Library bundles not found. Run: npm run build"

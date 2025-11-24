@@ -94,6 +94,22 @@ export function resetWasm(): void {
   wasmInstance = null;
 }
 
+/**
+ * Get current WASM configuration
+ */
+export function getWasmConfig(): WasmConfig {
+  // If no config specified, return default CDN config
+  if (!wasmConfig.wasmUrl) {
+    const targetVersion = PACKAGE_VERSION;
+    const baseUrl = `https://cdn.jsdelivr.net/npm/${PACKAGE_NAME}@${targetVersion}/bundle/bin/complete`;
+    return {
+      wasmUrl: `${baseUrl}/veloqr_bg.wasm`,
+      wasmJsUrl: `${baseUrl}/veloqr.js`,
+    };
+  }
+  return { ...wasmConfig };
+}
+
 export async function loadWasm(): Promise<any> {
   if (wasmInitialized && wasmInstance) {
     return wasmInstance;
