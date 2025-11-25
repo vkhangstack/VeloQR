@@ -1,0 +1,30 @@
+# Source files
+src/
+rust-qr/
+
+# Example
+example/
+
+# Development files
+dist/
+node_modules/
+*.log
+.DS_Store
+
+# Config files
+tsconfig.json
+rollup.config.js
+.gitignore
+
+# Documentation
+QUICKSTART.md
+
+# Scripts
+scripts/
+
+# Only publish release folder, README, and LICENSE
+# Everything else is ignored by default
+!release/
+!README.md
+!LICENSE
+
