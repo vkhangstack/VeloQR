@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { QRScannerProps } from './types';
-import { useQRScanner } from './hooks/useQRScanner';
-import { drawQROverlay } from './utils/qr-processor';
-import { ScanningAnimation } from './components/ScanningAnimation';
+import { MRZScannerProps } from './types';
+import { useMRZScanner } from './hooks/useMRZScanner';
+import { drawMRZOverlay } from './utils/mrz-processor';
+import { MRZScanningAnimation } from './components/MRZScanningAnimation';
 import { DEFAULT_TEXTS, getTextsByLanguage } from './constants/defaultTexts';
 import { CameraSwitchIcon } from './components/CameraSwitchIcon';
 
-export const QRScanner: React.FC<QRScannerProps> = ({
+export const MRZScanner: React.FC<MRZScannerProps> = ({
   onScan,
   onError,
   scanDelay = 500,
@@ -20,13 +20,9 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   highlightBorderWidth = 3,
   animationText = {},
   animationConfig = {},
-  enableFrameMerging = false,
-  optimizeForSafari,
   showCameraSwitch = false,
   preferredCamera = 'environment',
   language,
-  crop,
-  sharpen,
 }) => {
   const [showDetection, setShowDetection] = useState(false);
   const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(
@@ -39,17 +35,9 @@ export const QRScanner: React.FC<QRScannerProps> = ({
 
   // Merge default texts with custom texts
   const texts = {
-    scanning: animationText.scanning || langTexts.qr.scanning,
-    detected: animationText.detected || langTexts.qr.detected,
-    detectedCount: animationText.detectedCount || langTexts.qr.detectedCount,
-    instruction: animationText.instruction || langTexts.qr.instruction,
-  };
-
-  // Helper function to format detected count text
-  const formatDetectedCount = (count: number): string => {
-    const template = texts.detectedCount || 'Detected {count} QR code{plural}';
-    const plural = count > 1 ? 's' : '';
-    return template.replace('{count}', String(count)).replace('{plural}', plural);
+    scanning: animationText.scanning || langTexts.mrz.scanning,
+    detected: animationText.detected || langTexts.mrz.detected,
+    instruction: animationText.instruction || langTexts.mrz.instruction,
   };
 
   // Merge default config with custom config
@@ -57,7 +45,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     showScanLine: animationConfig.showScanningLine ?? true,
     showCorners: animationConfig.showCorners ?? true,
     showStatusText: animationConfig.showStatusText ?? false,
-    showInstruction: animationConfig.showInstruction ?? false,
+    showInstruction: animationConfig.showInstruction ?? true,
     color: animationConfig.animationColor || highlightColor,
     scanLineSpeed: animationConfig.scanLineSpeed || 2,
     detectionDuration: animationConfig.detectionDuration || 1000,
@@ -72,18 +60,14 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     switchCamera,
     availableCameras,
     currentCamera,
-    lastResults,
+    lastResult,
     error,
-  } = useQRScanner({
+  } = useMRZScanner({
     scanDelay,
     onScan,
     onError,
     videoConstraints,
-    enableFrameMerging,
-    optimizeForSafari,
     preferredCamera,
-    crop,
-    sharpen,
   });
 
   const handleCameraSwitch = async () => {
@@ -107,23 +91,26 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     };
   }, []);
 
-  // Draw overlay when results change
+  // Clear overlay when result changes (canvas is cropped, overlay not needed)
   useEffect(() => {
-    if (canvasRef.current && lastResults.length > 0) {
-      drawQROverlay(canvasRef.current, lastResults, highlightColor, highlightBorderWidth);
+    if (canvasRef.current && lastResult) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
     }
-  }, [lastResults, highlightColor, highlightBorderWidth]);
+  }, [lastResult]);
 
-  // Show detection animation when QR code is found
+  // Show detection animation when MRZ is found
   useEffect(() => {
-    if (lastResults.length > 0) {
+    if (lastResult) {
       setShowDetection(true);
       const timer = setTimeout(() => {
         setShowDetection(false);
       }, config.detectionDuration);
       return () => clearTimeout(timer);
     }
-  }, [lastResults, config.detectionDuration]);
+  }, [lastResult, config.detectionDuration]);
 
   const containerStyle: React.CSSProperties = {
     position: 'relative',
@@ -165,7 +152,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   };
 
   return (
-    <div className={`qr-scanner ${className}`} style={containerStyle}>
+    <div className={`mrz-scanner ${className}`} style={containerStyle}>
       <video
         ref={videoRef}
         style={videoStyle}
@@ -177,15 +164,17 @@ export const QRScanner: React.FC<QRScannerProps> = ({
       {showOverlay && <div style={overlayStyle} />}
 
       {/* Scanning and detection animations */}
-      <ScanningAnimation
+      <MRZScanningAnimation
         isScanning={isScanning}
         isDetected={showDetection}
         scanningText={texts.scanning}
         detectedText={texts.detected}
+        instructionText={texts.instruction}
         color={config.color}
         showScanLine={config.showScanLine}
         showCorners={config.showCorners}
         showStatusText={config.showStatusText}
+        showInstruction={config.showInstruction}
         scanLineSpeed={config.scanLineSpeed}
       />
 
@@ -206,7 +195,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
           Error: {error.message}
         </div>
       )}
-      {lastResults.length > 0 && (
+      {lastResult && (
         <div
           style={{
             position: 'absolute',
@@ -224,7 +213,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
             whiteSpace: 'nowrap',
           }}
         >
-          {formatDetectedCount(lastResults.length)}
+          {lastResult.documentType}: {lastResult.surname}, {lastResult.givenNames}
         </div>
       )}
 

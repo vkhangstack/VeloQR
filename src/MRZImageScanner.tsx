@@ -1,10 +1,10 @@
 import React, { useRef, useState } from 'react';
-import { QRImageScannerProps, QRCodeResult } from './types';
-import { initWasm, decodeQRFromImageData } from './utils/qr-processor';
-import { ImageProcessingAnimation } from './components/ImageProcessingAnimation';
+import { MRZImageScannerProps, MRZResult } from './types';
+import { initWasm, decodeMRZFromImageData, formatMRZDate } from './utils/mrz-processor';
+import { MRZImageProcessingAnimation } from './components/MRZImageProcessingAnimation';
 import { DEFAULT_TEXTS, getTextsByLanguage } from './constants/defaultTexts';
 
-export const QRImageScanner: React.FC<QRImageScannerProps> = ({
+export const MRZImageScanner: React.FC<MRZImageScannerProps> = ({
   onScan,
   onError,
   className = '',
@@ -19,7 +19,7 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [results, setResults] = useState<QRCodeResult[]>([]);
+  const [result, setResult] = useState<MRZResult | null>(null);
   const wasmInitializedRef = useRef(false);
 
   // Get language-specific texts
@@ -27,24 +27,18 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
 
   // Merge default texts with custom texts
   const texts = {
-    processing: animationText.processing || langTexts.qr.processing,
-    success: animationText.success || langTexts.qr.success,
-    detectedCount: animationText.detectedCount || langTexts.qr.detectedCount,
-    dropzoneText: langTexts.qr.dropzoneText,
-    resultLabel: langTexts.qr.resultLabel,
-  };
-
-  // Helper function to format detected count text
-  const formatDetectedCount = (count: number): string => {
-    const template = texts.detectedCount || 'Detected {count} QR code{plural}';
-    const plural = count > 1 ? 's' : '';
-    return template.replace('{count}', String(count)).replace('{plural}', plural);
+    processing: animationText.processing || langTexts.mrz.processing,
+    success: animationText.success || langTexts.mrz.success,
+    stageTexts: animationText.stageTexts || langTexts.mrz.stageTexts,
+    dropzoneText: langTexts.mrz.dropzoneText,
+    dropzoneHint: langTexts.mrz.dropzoneHint,
   };
 
   // Merge default config with custom config
   const config = {
     color: animationConfig.animationColor || '#00ff00',
     showProgressBar: animationConfig.showProgressBar ?? true,
+    showStageIndicator: animationConfig.showStageIndicator ?? true,
   };
 
   const processImage = async (file: File) => {
@@ -55,7 +49,7 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
     }
 
     setIsProcessing(true);
-    setResults([]);
+    setResult(null);
 
     try {
       // Initialize WASM if needed
@@ -91,17 +85,21 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
 
       ctx.drawImage(img, 0, 0);
 
-      // Get image data and decode QR codes
+      // Get image data and decode MRZ
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const qrResults = await decodeQRFromImageData(imageData);
+      const mrzResult = await decodeMRZFromImageData(imageData);
 
-      setResults(qrResults);
-      onScan?.(qrResults);
+      setResult(mrzResult);
 
-      // Show success animation if QR codes found
-      if (qrResults.length > 0) {
+      if (mrzResult) {
+        onScan?.(mrzResult);
+
+        // Show success animation if MRZ found
         setShowSuccess(true);
         setTimeout(() => setShowSuccess(false), 2000);
+      } else {
+        const error = new Error('No MRZ detected in image');
+        onError?.(error);
       }
 
       // Clean up
@@ -163,16 +161,19 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
   };
 
   return (
-    <div className={`qr-image-scanner ${className}`} style={containerStyle}>
+    <div className={`mrz-image-scanner ${className}`} style={containerStyle}>
       <div
         style={dropZoneStyle}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
-        onClick={() => document.getElementById('qr-file-input')?.click()}
+        onClick={() => document.getElementById('mrz-file-input')?.click()}
       >
         <p>{texts.dropzoneText}</p>
+        <p style={{ fontSize: '12px', color: '#666' }}>
+          {texts.dropzoneHint}
+        </p>
         <input
-          id="qr-file-input"
+          id="mrz-file-input"
           type="file"
           accept={acceptedFormats.join(',')}
           onChange={handleFileChange}
@@ -180,7 +181,7 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
         />
       </div>
 
-      {results.length > 0 && (
+      {result && (
         <div
           style={{
             backgroundColor: '#e8f5e9',
@@ -189,23 +190,74 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
             marginBottom: '16px',
           }}
         >
-          <h3 style={{ margin: '0 0 8px 0' }}>
-            {formatDetectedCount(results.length)}:
-          </h3>
-          {results.map((result, index) => (
-            <div
-              key={index}
-              style={{
-                backgroundColor: 'white',
-                padding: '8px',
-                marginTop: '8px',
-                borderRadius: '4px',
-                wordBreak: 'break-all',
-              }}
-            >
-              <strong>{texts.resultLabel} {index + 1}:</strong> {result.data}
-            </div>
-          ))}
+          <h3 style={{ margin: '0 0 16px 0' }}>MRZ Information:</h3>
+
+          <div
+            style={{
+              backgroundColor: 'white',
+              padding: '16px',
+              borderRadius: '4px',
+              display: 'grid',
+              gridTemplateColumns: '140px 1fr',
+              gap: '12px',
+            }}
+          >
+            <strong>Document Type:</strong>
+            <span>{result.documentType}</span>
+
+            <strong>Document Number:</strong>
+            <span>{result.documentNumber}</span>
+
+            <strong>Issuing Country:</strong>
+            <span>{result.issuingCountry}</span>
+
+            <strong>Nationality:</strong>
+            <span>{result.nationality}</span>
+
+            <strong>Surname:</strong>
+            <span>{result.surname}</span>
+
+            <strong>Given Names:</strong>
+            <span>{result.givenNames}</span>
+
+            <strong>Date of Birth:</strong>
+            <span>{formatMRZDate(result.dateOfBirth)}</span>
+
+            <strong>Date of Expiry:</strong>
+            <span>{formatMRZDate(result.dateOfExpiry)}</span>
+
+            <strong>Sex:</strong>
+            <span>{result.sex === 'M' ? 'Male' : result.sex === 'F' ? 'Female' : 'Other'}</span>
+
+            {result.optionalData && (
+              <>
+                <strong>Optional Data:</strong>
+                <span>{result.optionalData}</span>
+              </>
+            )}
+
+            <strong>Confidence:</strong>
+            <span>{(result.confidence * 100).toFixed(0)}%</span>
+          </div>
+
+          <div
+            style={{
+              backgroundColor: 'white',
+              padding: '12px',
+              borderRadius: '4px',
+              marginTop: '12px',
+              fontFamily: 'monospace',
+              fontSize: '12px',
+              overflowX: 'auto',
+            }}
+          >
+            <strong>Raw MRZ:</strong>
+            {result.rawMrz.map((line, index) => (
+              <div key={index} style={{ marginTop: '4px' }}>
+                {line}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -214,14 +266,16 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
           <img src={previewUrl} alt="Preview" style={previewImageStyle} />
 
           {/* Processing and success animations */}
-          <ImageProcessingAnimation
+          <MRZImageProcessingAnimation
             isProcessing={isProcessing}
             isSuccess={showSuccess}
-            resultCount={results.length}
+            resultCount={result ? 1 : 0}
             processingText={texts.processing}
             successText={texts.success}
+            stageTexts={texts.stageTexts}
             color={config.color}
             showProgressBar={config.showProgressBar}
+            showStageIndicator={config.showStageIndicator}
           />
         </div>
       )}

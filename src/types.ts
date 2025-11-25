@@ -21,6 +21,8 @@ export interface AnimationText {
   processing?: string;
   success?: string;
   detectedCount?: string; // Template for "Detected X QR code(s)" - use {count} as placeholder
+  instruction?: string; // Instruction text for MRZ scanning (e.g., "Position MRZ within frame")
+  stageTexts?: string[]; // Custom stage texts for MRZ processing (e.g., ["Detecting...", "Extracting...", "Validating..."])
 }
 
 export interface AnimationConfig {
@@ -30,6 +32,9 @@ export interface AnimationConfig {
   animationColor?: string;
   scanLineSpeed?: number;
   detectionDuration?: number;
+  showInstruction?: boolean; // Show instruction text for MRZ scanning
+  showStageIndicator?: boolean; // Show stage indicator for MRZ processing
+  showProgressBar?: boolean; // Show progress bar for processing
 }
 
 export interface QRScannerProps {
@@ -50,6 +55,14 @@ export interface QRScannerProps {
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations
   showCameraSwitch?: boolean; // Show camera switch button
   preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+  language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
+  crop?: {
+    x: number; // Crop area for scanning (in pixels)
+    y: number; // Crop area for scanning (in pixels)
+    width: number; // Crop area for scanning (in pixels)
+    height: number; // Crop area for scanning (in pixels)
+  };
+  sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
 }
 
 export interface QRImageScannerProps {
@@ -61,6 +74,7 @@ export interface QRImageScannerProps {
   acceptedFormats?: string[];
   animationText?: AnimationText;
   animationConfig?: AnimationConfig;
+  language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
 }
 
 export interface UseQRScannerOptions {
@@ -72,6 +86,13 @@ export interface UseQRScannerOptions {
   frameMergeCount?: number; // Number of frames to merge (default: 3)
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations (default: auto-detect)
   preferredCamera?: 'front' | 'back' | 'environment' | 'user'; // Preferred camera
+  crop?: {
+    x: number; // Crop area for scanning (in pixels)
+    y: number; // Crop area for scanning (in pixels)
+    width: number; // Crop area for scanning (in pixels)
+    height: number; // Crop area for scanning (in pixels)
+  };
+  sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
 }
 
 export interface UseQRScannerReturn {
@@ -92,4 +113,79 @@ export interface CameraDevice {
   label: string;
   kind: 'videoinput';
   groupId?: string;
+}
+
+// ==================== MRZ Types ====================
+
+export interface MRZResult {
+  documentType: string; // TD1, TD2, or TD3
+  documentNumber: string;
+  dateOfBirth: string;
+  dateOfExpiry: string;
+  nationality: string;
+  sex: string;
+  surname: string;
+  givenNames: string;
+  optionalData: string;
+  issuingCountry: string;
+  rawMrz: string[];
+  confidence: number;
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+}
+
+export interface MRZScannerProps {
+  onScan?: (result: MRZResult) => void;
+  onError?: (error: Error) => void;
+  scanDelay?: number;
+  videoConstraints?: MediaTrackConstraints;
+  className?: string;
+  style?: React.CSSProperties;
+  showOverlay?: boolean;
+  overlayColor?: string;
+  overlayOpacity?: number;
+  highlightColor?: string;
+  highlightBorderWidth?: number;
+  animationText?: AnimationText;
+  animationConfig?: AnimationConfig;
+  showCameraSwitch?: boolean;
+  preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+  language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
+}
+
+export interface MRZImageScannerProps {
+  onScan?: (result: MRZResult) => void;
+  onError?: (error: Error) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  showPreview?: boolean;
+  acceptedFormats?: string[];
+  animationText?: AnimationText;
+  animationConfig?: AnimationConfig;
+  language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
+}
+
+export interface UseMRZScannerOptions {
+  scanDelay?: number;
+  onScan?: (result: MRZResult) => void;
+  onError?: (error: Error) => void;
+  videoConstraints?: MediaTrackConstraints;
+  preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+}
+
+export interface UseMRZScannerReturn {
+  videoRef: React.RefObject<HTMLVideoElement>;
+  canvasRef: React.RefObject<HTMLCanvasElement>;
+  isScanning: boolean;
+  startScanning: () => Promise<void>;
+  stopScanning: () => void;
+  switchCamera: (facingMode?: 'front' | 'back' | 'environment' | 'user') => Promise<void>;
+  availableCameras: CameraDevice[];
+  currentCamera: CameraDevice | null;
+  lastResult: MRZResult | null;
+  error: Error | null;
 }
