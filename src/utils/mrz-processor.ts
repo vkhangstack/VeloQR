@@ -1,12 +1,10 @@
-import { MRZResult, WorkerConfig } from '../types';
+import { MRZResult } from '../types';
 import { loadWasm } from './wasm-loader';
-import Tesseract from 'tesseract.js';
 import packageJson from '../../package.json';
 
 const PACKAGE_NAME = packageJson.name;
 const PACKAGE_VERSION = packageJson.version;
 let wasmModule: any = null;
-let tesseractWorker: Tesseract.Worker | null = null;
 let lastScanTime = 0;
 const MIN_SCAN_INTERVAL = 100; // Minimum 100ms between scans
 
@@ -14,7 +12,7 @@ const MIN_SCAN_INTERVAL = 100; // Minimum 100ms between scans
  * Initialize WASM and Tesseract for MRZ scanning
  */
 export async function initWasm(): Promise<void> {
-  if (wasmModule && tesseractWorker) {
+  if (wasmModule) {
     return;
   }
 
@@ -23,27 +21,6 @@ export async function initWasm(): Promise<void> {
     if (!wasmModule) {
       wasmModule = await loadWasm();
       console.log('WASM module initialized for MRZ parsing');
-    }
-
-    // Initialize Tesseract worker for OCR
-    if (!tesseractWorker) {
-      tesseractWorker = await Tesseract.createWorker('eng', 1, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
-          }
-        },
-      });
-
-      // Configure Tesseract for MRZ with optimized parameters
-      await tesseractWorker.setParameters({
-        tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<',
-        tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-        preserve_interword_spaces: '0',
-        tessedit_ocr_engine_mode: '2', // LSTM + Legacy for better accuracy
-      });
-
-      console.log('Tesseract OCR initialized successfully for MRZ');
     }
   } catch (error) {
     console.error('Failed to initialize MRZ scanner:', error);
@@ -266,7 +243,7 @@ function detectMRZRegion(imageData: ImageData): {
   }
 
   // Find continuous regions
-  const regions: Array<{start: number; end: number}> = [];
+  const regions: Array<{ start: number; end: number }> = [];
   let currentRegion = { start: mrzRows[0], end: mrzRows[0] };
 
   for (let i = 1; i < mrzRows.length; i++) {
@@ -332,7 +309,7 @@ export async function decodeMRZFromImageData(
   }
   lastScanTime = now;
 
-  if (!wasmModule || !tesseractWorker) {
+  if (!wasmModule) {
     await initWasm();
   }
 
@@ -367,8 +344,7 @@ export async function decodeMRZFromImageData(
 
       // Perform OCR on full image
       console.log('Step 3: Performing OCR on full image...');
-      const { data: { text } } = await tesseractWorker!.recognize(canvas);
-
+      const text: any = null;
       if (!text || text.trim().length === 0) {
         console.log('No text detected by OCR');
         return null;
@@ -424,7 +400,7 @@ export async function decodeMRZFromImageData(
 
     // Step 5: Perform OCR using Tesseract
     console.log('Step 4: Performing OCR on upscaled MRZ region...');
-    const { data: { text } } = await tesseractWorker!.recognize(canvas);
+    const text: any = null
 
     console.log('OCR Result:', text);
 
@@ -471,10 +447,6 @@ export async function decodeMRZFromImageData(
  * Cleanup resources
  */
 export async function cleanup(): Promise<void> {
-  if (tesseractWorker) {
-    await tesseractWorker.terminate();
-    tesseractWorker = null;
-  }
   wasmModule = null;
 }
 

@@ -15,21 +15,6 @@ export interface WorkerConfig {
   version?: string; // Package version for CDN loading (e.g., '1.0.1', 'latest')
 }
 
-export interface TesseractConfig {
-  language?: string; // OCR language (default: 'eng')
-  charWhitelist?: string; // Allowed characters (default: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789<')
-  pageSegMode?: number; // Page segmentation mode (default: PSM.SINGLE_BLOCK)
-  oem?: number; // OCR Engine mode (0: Legacy, 1: Neural nets LSTM, 2: Legacy + LSTM, 3: Default)
-  enablePreprocessing?: boolean; // Enable image preprocessing for better OCR (default: true)
-  preprocessingOptions?: {
-    contrast?: number; // Contrast adjustment (1.0-3.0, default: 1.5)
-    brightness?: number; // Brightness adjustment (-50 to 50, default: 0)
-    sharpen?: boolean; // Apply sharpening filter (default: true)
-    denoise?: boolean; // Apply denoising filter (default: true)
-    threshold?: boolean; // Apply adaptive thresholding (default: true)
-  };
-}
-
 export interface AnimationText {
   scanning?: string;
   detected?: string;
