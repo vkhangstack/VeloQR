@@ -15,6 +15,8 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     frameMergeCount = 3,
     optimizeForSafari = isSafariOrIOS(),
     preferredCamera = 'environment',
+    crop,
+    sharpen,
   } = options;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -96,7 +98,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       }
 
       // Decode QR codes
-      const results = await decodeQRFromImageData(imageData);
+      const results = await decodeQRFromImageData(imageData, { crop, sharpen });
 
       if (results.length > 0) {
          // vibrate if supported
@@ -114,7 +116,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     } finally {
       isScanningRef.current = false;
     }
-  }, [isScanning, onScan, onError, enableFrameMerging, optimizeForSafari]);
+  }, [isScanning, onScan, onError, enableFrameMerging, optimizeForSafari, crop, sharpen]);
 
   const getFacingMode = useCallback((camera: string): 'user' | 'environment' => {
     if (camera === 'front' || camera === 'user') {

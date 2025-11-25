@@ -56,6 +56,13 @@ export interface QRScannerProps {
   showCameraSwitch?: boolean; // Show camera switch button
   preferredCamera?: 'front' | 'back' | 'environment' | 'user';
   language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
+  crop?: {
+    x: number; // Crop area for scanning (in pixels)
+    y: number; // Crop area for scanning (in pixels)
+    width: number; // Crop area for scanning (in pixels)
+    height: number; // Crop area for scanning (in pixels)
+  };
+  sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
 }
 
 export interface QRImageScannerProps {
@@ -79,6 +86,13 @@ export interface UseQRScannerOptions {
   frameMergeCount?: number; // Number of frames to merge (default: 3)
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations (default: auto-detect)
   preferredCamera?: 'front' | 'back' | 'environment' | 'user'; // Preferred camera
+  crop?: {
+    x: number; // Crop area for scanning (in pixels)
+    y: number; // Crop area for scanning (in pixels)
+    width: number; // Crop area for scanning (in pixels)
+    height: number; // Crop area for scanning (in pixels)
+  };
+  sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
 }
 
 export interface UseQRScannerReturn {

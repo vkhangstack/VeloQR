@@ -1,5 +1,7 @@
 use wasm_bindgen::prelude::*;
 use image::{GrayImage, ImageBuffer};
+use image::imageops;
+use image::{DynamicImage, RgbaImage};
 use rqrr::PreparedImage;
 use serde::{Deserialize, Serialize};
 
@@ -292,4 +294,47 @@ fn extract_names(name_field: &str) -> (String, String) {
     };
 
     (surname, given_names)
+}
+
+// ==================== Image Processing Implementation ====================
+
+#[wasm_bindgen]
+pub fn crop_image(
+    image_data: &[u8],
+    width: u32,
+    height: u32,
+    x: u32,
+    y: u32,
+    crop_width: u32,
+    crop_height: u32,
+) -> Result<Vec<u8>, JsValue> {
+    let img_buffer = match RgbaImage::from_raw(width, height, image_data.to_vec()) {
+        Some(buffer) => buffer,
+        None => return Err(JsValue::from_str("Failed to create image from buffer")),
+    };
+    let mut img = DynamicImage::ImageRgba8(img_buffer);
+
+    let cropped_img = imageops::crop_imm(&mut img, x, y, crop_width, crop_height).to_image();
+
+    Ok(cropped_img.into_raw())
+}
+
+#[wasm_bindgen]
+pub fn sharpen_image(
+    image_data: &[u8],
+    width: u32,
+    height: u32,
+    amount: f32,
+) -> Result<Vec<u8>, JsValue> {
+    let img_buffer = match RgbaImage::from_raw(width, height, image_data.to_vec()) {
+        Some(buffer) => buffer,
+        None => return Err(JsValue::from_str("Failed to create image from buffer")),
+    };
+    let img = DynamicImage::ImageRgba8(img_buffer);
+
+    // The unsharpen function in the image crate is actually a sharpen function.
+    // The amount is the sigma value for the gaussian blur, and threshold is for the mask.
+    let sharpened_img = imageops::unsharpen(&img, amount, 1);
+
+    Ok(sharpened_img.into_raw())
 }

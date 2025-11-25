@@ -145,7 +145,8 @@ export async function initWasm(): Promise<void> {
 }
 
 export async function decodeQRFromImageData(
-  imageData: ImageData
+  imageData: ImageData,
+  options: { crop?: any; sharpen?: number } = {}
 ): Promise<QRCodeResult[]> {
   // Throttle calls to prevent overload
   const now = Date.now();
@@ -167,7 +168,7 @@ export async function decodeQRFromImageData(
         imageData.width,
         imageData.height
       );
-      const results = await workerHelper!.decode(clonedData);
+      const results = await workerHelper!.decode(clonedData, options);
       return results;
     } catch (error) {
       console.error('QR decoding error (worker):', error);
@@ -180,7 +181,28 @@ export async function decodeQRFromImageData(
     }
 
     try {
-      const { data, width, height } = imageData;
+      let { data, width, height } = imageData;
+      const { crop, sharpen } = options;
+
+      // Apply image processing if specified
+      if (crop && crop.width > 0 && crop.height > 0) {
+        data = wasmModule.crop_image(
+          data,
+          width,
+          height,
+          crop.x,
+          crop.y,
+          crop.width,
+          crop.height
+        );
+        width = crop.width;
+        height = crop.height;
+      }
+
+      if (sharpen && sharpen > 0) {
+        data = wasmModule.sharpen_image(data, width, height, sharpen);
+      }
+
       const results = wasmModule.decode_qr_from_image(data, width, height);
       return results as QRCodeResult[];
     } catch (error) {

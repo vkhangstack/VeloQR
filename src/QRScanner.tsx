@@ -25,6 +25,8 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   showCameraSwitch = false,
   preferredCamera = 'environment',
   language,
+  crop,
+  sharpen,
 }) => {
   const [showDetection, setShowDetection] = useState(false);
   const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(
@@ -80,6 +82,8 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     enableFrameMerging,
     optimizeForSafari,
     preferredCamera,
+    crop,
+    sharpen,
   });
 
   const handleCameraSwitch = async () => {

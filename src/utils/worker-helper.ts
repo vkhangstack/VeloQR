@@ -68,7 +68,7 @@ export class WorkerHelper {
     });
   }
 
-  async decode(imageData: ImageData): Promise<QRCodeResult[]> {
+  async decode(imageData: ImageData, options: any): Promise<QRCodeResult[]> {
     if (!this.worker) {
       throw new Error('Worker not initialized');
     }
@@ -81,7 +81,7 @@ export class WorkerHelper {
       this.worker!.postMessage({
         type: 'decode',
         id,
-        payload: { imageData }
+        payload: { imageData, ...options }
       }, [imageData.data.buffer]);
 
       // Timeout after 5 seconds

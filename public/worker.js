@@ -181,22 +181,39 @@ function decodeWindow(imageData) {
 }
 
 // Decode QR codes from image data with optional sliding window
-function decodeQRCode(imageData, useSlidingWindow = false, scales = [1.0, 0.75, 0.5], stride = 0.25, maxWindows = 10) {
+function decodeQRCode(
+  imageData,
+  {
+    useSlidingWindow = false,
+    scales = [1.0, 0.75, 0.5],
+    stride = 0.25,
+    maxWindows = 10,
+    crop = null,
+    sharpen = null,
+  }
+) {
   if (!isInitialized || !wasmModule) {
     throw new Error('WASM not initialized');
   }
 
   try {
+    let processedImageData = imageData;
+
+    // Apply image processing if specified
+    if (crop || sharpen) {
+      processedImageData = processImage(imageData, { crop, sharpen });
+    }
+
     if (!useSlidingWindow) {
       // Original behavior: decode the full image directly
-      return decodeWindow(imageData);
+      return decodeWindow(processedImageData);
     }
 
     // Sliding window approach
     const allResults = [];
 
     // First, try full image
-    const fullImageResults = decodeWindow(imageData);
+    const fullImageResults = decodeWindow(processedImageData);
     allResults.push(...fullImageResults);
 
     // Early exit if we found QR codes in full image (performance optimization)
@@ -206,8 +223,8 @@ function decodeQRCode(imageData, useSlidingWindow = false, scales = [1.0, 0.75, 
 
     // Generate windows only if full image scan failed
     const windows = generateSlidingWindows(
-      imageData.width,
-      imageData.height,
+      processedImageData.width,
+      processedImageData.height,
       scales,
       stride,
       maxWindows
@@ -215,7 +232,7 @@ function decodeQRCode(imageData, useSlidingWindow = false, scales = [1.0, 0.75, 
 
     // Process each window
     for (const window of windows) {
-      const windowImageData = extractWindow(imageData, window);
+      const windowImageData = extractWindow(processedImageData, window);
       const windowResults = decodeWindow(windowImageData);
 
       // Adjust bounds to global coordinates
@@ -240,6 +257,48 @@ function decodeQRCode(imageData, useSlidingWindow = false, scales = [1.0, 0.75, 
   } catch (error) {
     console.error('[Worker] Decode error:', error);
     return [];
+  }
+}
+
+// Apply image processing (crop, sharpen)
+function processImage(imageData, { crop, sharpen }) {
+  let { data, width, height } = imageData;
+
+  try {
+    // Apply cropping
+    if (crop && crop.width > 0 && crop.height > 0) {
+      console.log('[Worker] Cropping image:', crop);
+      const croppedData = wasmModule.crop_image(
+        data,
+        width,
+        height,
+        crop.x,
+        crop.y,
+        crop.width,
+        crop.height
+      );
+      data = croppedData;
+      width = crop.width;
+      height = crop.height;
+    }
+
+    // Apply sharpening
+    if (sharpen && sharpen > 0) {
+      console.log('[Worker] Sharpening image, amount:', sharpen);
+      const sharpenedData = wasmModule.sharpen_image(
+        data,
+        width,
+        height,
+        sharpen
+      );
+      data = sharpenedData;
+    }
+
+    return { data, width, height };
+  } catch (error) {
+    console.error('[Worker] Image processing error:', error);
+    // Return original image data if processing fails
+    return imageData;
   }
 }
 
@@ -270,23 +329,18 @@ self.onmessage = async function (e) {
           type: 'init-response',
           id,
           success: result.success,
-          error: result.error
+          error: result.error,
         });
         break;
       }
 
       case 'decode': {
-        const results = decodeQRCode(
-          payload.imageData,
-          payload.useSlidingWindow,
-          payload.scales,
-          payload.stride,
-          payload.maxWindows
-        );
+        const { imageData, ...options } = payload;
+        const results = decodeQRCode(imageData, options);
         self.postMessage({
           type: 'decode-response',
           id,
-          results
+          results,
         });
         break;
       }
@@ -305,7 +359,7 @@ self.onmessage = async function (e) {
     self.postMessage({
       type: type + '-error',
       id,
-      error: error.message
+      error: error.message,
     });
   }
 };
