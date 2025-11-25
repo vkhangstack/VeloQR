@@ -5,6 +5,9 @@ use image::{DynamicImage, RgbaImage};
 use rqrr::PreparedImage;
 use serde::{Deserialize, Serialize};
 
+mod ocr;
+pub use ocr::*;
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct QRCodeResult {
     pub data: String,

@@ -155,6 +155,8 @@ export interface MRZScannerProps {
   showCameraSwitch?: boolean;
   preferredCamera?: 'front' | 'back' | 'environment' | 'user';
   language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
+  modelUrl?: string; // URL to OCR ONNX model for text recognition
+  useOCR?: boolean; // Enable OCR-based text recognition (default: false)
 }
 
 export interface MRZImageScannerProps {
@@ -175,6 +177,8 @@ export interface UseMRZScannerOptions {
   onError?: (error: Error) => void;
   videoConstraints?: MediaTrackConstraints;
   preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+  modelUrl?: string; // URL to OCR ONNX model for text recognition
+  useOCR?: boolean; // Enable OCR-based text recognition (default: false, uses preprocessing only)
 }
 
 export interface UseMRZScannerReturn {
@@ -187,5 +191,80 @@ export interface UseMRZScannerReturn {
   availableCameras: CameraDevice[];
   currentCamera: CameraDevice | null;
   lastResult: MRZResult | null;
+  error: Error | null;
+}
+
+// ==================== OCR Types ====================
+
+export interface OCRResult {
+  text: string;
+  confidence: number;
+  bounds?: [number, number][];
+}
+
+export interface OCRBoundingBox {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  confidence: number;
+}
+
+export interface OCRScannerProps {
+  onScan?: (results: OCRResult[]) => void;
+  onError?: (error: Error) => void;
+  scanDelay?: number;
+  videoConstraints?: MediaTrackConstraints;
+  className?: string;
+  style?: React.CSSProperties;
+  showOverlay?: boolean;
+  overlayColor?: string;
+  overlayOpacity?: number;
+  highlightColor?: string;
+  highlightBorderWidth?: number;
+  animationText?: AnimationText;
+  animationConfig?: AnimationConfig;
+  showCameraSwitch?: boolean;
+  preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+  language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr';
+  modelUrl?: string; // URL to ONNX model
+  detectTextRegions?: boolean; // Auto-detect text regions before OCR
+}
+
+export interface OCRImageScannerProps {
+  onScan?: (results: OCRResult[]) => void;
+  onError?: (error: Error) => void;
+  className?: string;
+  style?: React.CSSProperties;
+  showPreview?: boolean;
+  acceptedFormats?: string[];
+  animationText?: AnimationText;
+  animationConfig?: AnimationConfig;
+  language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr';
+  modelUrl?: string; // URL to ONNX model
+  detectTextRegions?: boolean; // Auto-detect text regions before OCR
+}
+
+export interface UseOCRScannerOptions {
+  scanDelay?: number;
+  onScan?: (results: OCRResult[]) => void;
+  onError?: (error: Error) => void;
+  videoConstraints?: MediaTrackConstraints;
+  preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+  modelUrl?: string; // URL to ONNX model
+  detectTextRegions?: boolean; // Auto-detect text regions before OCR
+}
+
+export interface UseOCRScannerReturn {
+  videoRef: React.RefObject<HTMLVideoElement>;
+  canvasRef: React.RefObject<HTMLCanvasElement>;
+  isScanning: boolean;
+  startScanning: () => Promise<void>;
+  stopScanning: () => void;
+  switchCamera: (facingMode?: 'front' | 'back' | 'environment' | 'user') => Promise<void>;
+  availableCameras: CameraDevice[];
+  currentCamera: CameraDevice | null;
+  lastResults: OCRResult[];
   error: Error | null;
 }

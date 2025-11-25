@@ -1,6 +1,12 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { MRZResult, UseMRZScannerOptions, UseMRZScannerReturn, CameraDevice } from '../types';
-import { initWasm, decodeMRZFromImageData } from '../utils/mrz-processor';
+import { 
+  initWasm, 
+  decodeMRZFromImageData,
+  configureOCRModel,
+  initOCRModel,
+  isOCRModelInitialized 
+} from '../utils/mrz-processor';
 import { getCameraDevices } from '../utils/camera-manager';
 import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
 
@@ -11,6 +17,8 @@ export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScanner
     onError,
     videoConstraints = {},
     preferredCamera = 'environment',
+    modelUrl,
+    useOCR = false,
   } = options;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -24,9 +32,32 @@ export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScanner
   const streamRef = useRef<MediaStream | null>(null);
   const scanIntervalRef = useRef<number | null>(null);
   const wasmInitializedRef = useRef(false);
+  const ocrInitializedRef = useRef(false);
   const isScanningRef = useRef(false);
   const canvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
   const lastScanTimeRef = useRef<number>(0);
+
+  // Initialize OCR model if provided
+  useEffect(() => {
+    const initOCR = async () => {
+      if (useOCR && modelUrl && !ocrInitializedRef.current) {
+        try {
+          console.log('Initializing OCR model for MRZ...');
+          configureOCRModel(modelUrl);
+          await initOCRModel(modelUrl);
+          ocrInitializedRef.current = true;
+          console.log('OCR model initialized successfully');
+        } catch (err) {
+          console.error('Failed to initialize OCR model:', err);
+          const error = err instanceof Error ? err : new Error('Failed to initialize OCR model');
+          setError(error);
+          onError?.(error);
+        }
+      }
+    };
+
+    initOCR();
+  }, [useOCR, modelUrl, onError]);
 
   const scan = useCallback(async () => {
     // Skip if already scanning to prevent concurrent scans

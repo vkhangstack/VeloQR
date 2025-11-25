@@ -1,15 +1,27 @@
-import { MRZResult } from '../types';
+import { MRZResult, OCRResult } from '../types';
 import { loadWasm } from './wasm-loader';
 import packageJson from '../../package.json';
 
 const PACKAGE_NAME = packageJson.name;
 const PACKAGE_VERSION = packageJson.version;
 let wasmModule: any = null;
+let ocrModelInitialized = true;
 let lastScanTime = 0;
 const MIN_SCAN_INTERVAL = 100; // Minimum 100ms between scans
 
+// OCR Model configuration
+let ocrModelUrl: string | null = null;
+
 /**
- * Initialize WASM and Tesseract for MRZ scanning
+ * Configure OCR model URL for MRZ recognition
+ */
+export function configureOCRModel(modelUrl: string): void {
+  ocrModelUrl = modelUrl;
+  ocrModelInitialized = false; // Reset to trigger re-initialization
+}
+
+/**
+ * Initialize WASM and OCR model for MRZ scanning
  */
 export async function initWasm(): Promise<void> {
   if (wasmModule) {
@@ -22,10 +34,47 @@ export async function initWasm(): Promise<void> {
       wasmModule = await loadWasm();
       console.log('WASM module initialized for MRZ parsing');
     }
+
+    // Initialize OCR model if URL is configured
+    if (ocrModelUrl && !ocrModelInitialized) {
+      await initOCRModel(ocrModelUrl);
+    }
   } catch (error) {
     console.error('Failed to initialize MRZ scanner:', error);
     throw new Error('Failed to initialize MRZ scanner: ' + (error as Error).message);
   }
+}
+
+/**
+ * Initialize OCR model from URL
+ */
+export async function initOCRModel(modelUrl: string): Promise<void> {
+  if (!wasmModule) {
+    await initWasm();
+  }
+
+  try {
+    console.log('Loading OCR model from:', modelUrl);
+    const response = await fetch(modelUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch OCR model: ${response.statusText}`);
+    }
+    
+    const modelBytes = new Uint8Array(await response.arrayBuffer());
+    wasmModule.init_ocr_model(modelBytes);
+    ocrModelInitialized = true;
+    console.log('OCR model initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize OCR model:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if OCR model is initialized
+ */
+export function isOCRModelInitialized(): boolean {
+  return ocrModelInitialized && wasmModule?.is_ocr_model_initialized?.() === true;
 }
 
 /**
@@ -297,7 +346,7 @@ function detectMRZRegion(imageData: ImageData): {
 }
 
 /**
- * Decode MRZ from image data using Tesseract OCR
+ * Decode MRZ from image data using WASM OCR (tract-based)
  */
 export async function decodeMRZFromImageData(
   imageData: ImageData
@@ -316,104 +365,37 @@ export async function decodeMRZFromImageData(
   try {
     const { data, width, height } = imageData;
 
-    // Step 1: Preprocess image for better OCR accuracy
-    console.log('Step 1: Preprocessing image...');
-    let processedImage = toGrayscale(imageData);
-    processedImage = sharpenImage(processedImage); // Sharpen text
-    processedImage = adjustContrastBrightness(processedImage, 2.0, 10); // Higher contrast
-    processedImage = applyThreshold(processedImage); // Binary threshold
-
-    // Step 2: Detect MRZ region using JavaScript
-    console.log('Step 2: Detecting MRZ region...');
-    const mrzRegion = detectMRZRegion(processedImage);
-
-    if (!mrzRegion || !mrzRegion.data) {
-      console.log('No MRZ region detected, trying full image...');
-
-      // Fallback: try full image with preprocessing
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-
-      if (!ctx) {
-        throw new Error('Failed to get canvas context');
-      }
-
-      ctx.putImageData(processedImage, 0, 0);
-
-      // Perform OCR on full image
-      console.log('Step 3: Performing OCR on full image...');
-      const text: any = null;
-      if (!text || text.trim().length === 0) {
-        console.log('No text detected by OCR');
-        return null;
-      }
-
-      // Parse MRZ text using WASM
-      console.log('Step 4: Parsing MRZ...', text);
-      const wasmResult = wasmModule.parse_mrz_text(text);
-
-      console.log('OCR Result:', wasmResult);
-      if (wasmResult) {
-        return {
-          documentType: wasmResult.document_type,
-          documentNumber: wasmResult.document_number,
-          dateOfBirth: wasmResult.date_of_birth,
-          dateOfExpiry: wasmResult.date_of_expiry,
-          nationality: wasmResult.nationality,
-          sex: wasmResult.sex,
-          surname: wasmResult.surname,
-          givenNames: wasmResult.given_names,
-          optionalData: wasmResult.optional_data,
-          issuingCountry: wasmResult.issuing_country,
-          rawMrz: wasmResult.raw_mrz,
-          confidence: wasmResult.confidence,
-        } as MRZResult;
-      }
-
-      return null;
+    // Check if OCR model is available
+    if (ocrModelInitialized && wasmModule.detect_and_ocr_mrz) {
+      // Use WASM-based OCR inference (tract)
+      return await decodeMRZWithOCR(imageData);
     }
 
-    console.log(`MRZ region found: ${mrzRegion.width}x${mrzRegion.height}`);
+    // Fallback to traditional preprocessing + parsing
+    return await decodeMRZWithPreprocessing(imageData);
+  } catch (error) {
+    console.error('MRZ decoding error:', error);
+    return null;
+  }
+}
 
-    // Step 3: Upscale MRZ region for better OCR accuracy
-    const mrzImageData = new ImageData(
-      new Uint8ClampedArray(mrzRegion.data),
-      mrzRegion.width,
-      mrzRegion.height
+/**
+ * Decode MRZ using WASM OCR inference (tract-based)
+ */
+async function decodeMRZWithOCR(imageData: ImageData): Promise<MRZResult | null> {
+  const { data, width, height } = imageData;
+
+  console.log('Using WASM OCR inference for MRZ detection...');
+
+  try {
+    // Use the combined detect_and_ocr_mrz function
+    const wasmResult = wasmModule.detect_and_ocr_mrz(
+      new Uint8Array(data.buffer),
+      width,
+      height
     );
-    const upscaledMRZ = upscaleImage(mrzImageData, 2); // 2x upscale
-    console.log(`MRZ upscaled to: ${upscaledMRZ.width}x${upscaledMRZ.height}`);
 
-    // Step 4: Create canvas with upscaled MRZ region for OCR
-    const canvas = document.createElement('canvas');
-    canvas.width = upscaledMRZ.width;
-    canvas.height = upscaledMRZ.height;
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx) {
-      throw new Error('Failed to get canvas context');
-    }
-
-    ctx.putImageData(upscaledMRZ, 0, 0);
-
-    // Step 5: Perform OCR using Tesseract
-    console.log('Step 4: Performing OCR on upscaled MRZ region...');
-    const text: any = null
-
-    console.log('OCR Result:', text);
-
-    if (!text || text.trim().length === 0) {
-      console.log('No text detected by OCR');
-      return null;
-    }
-
-    // Step 6: Parse MRZ text using WASM
-    console.log('Step 5: Parsing MRZ...');
-    const wasmResult = wasmModule.parse_mrz_text(text);
-
-    if (wasmResult && mrzRegion.bounds) {
+    if (wasmResult) {
       return {
         documentType: wasmResult.document_type,
         documentNumber: wasmResult.document_number,
@@ -427,19 +409,160 @@ export async function decodeMRZFromImageData(
         issuingCountry: wasmResult.issuing_country,
         rawMrz: wasmResult.raw_mrz,
         confidence: wasmResult.confidence,
-        bounds: {
-          x: mrzRegion.bounds[0],
-          y: mrzRegion.bounds[1],
-          width: mrzRegion.bounds[2],
-          height: mrzRegion.bounds[3],
-        },
       } as MRZResult;
     }
 
     return null;
   } catch (error) {
-    console.error('MRZ decoding error:', error);
+    console.error('WASM OCR inference failed:', error);
+    // Fallback to preprocessing method
+    return await decodeMRZWithPreprocessing(imageData);
+  }
+}
+
+/**
+ * Decode MRZ using traditional preprocessing (fallback)
+ */
+async function decodeMRZWithPreprocessing(imageData: ImageData): Promise<MRZResult | null> {
+  const { data, width, height } = imageData;
+
+  // Step 1: Preprocess image for better OCR accuracy
+  console.log('Step 1: Preprocessing image...');
+  let processedImage = toGrayscale(imageData);
+  processedImage = sharpenImage(processedImage);
+  processedImage = adjustContrastBrightness(processedImage, 2.0, 10);
+  processedImage = applyThreshold(processedImage);
+
+  // Step 2: Detect MRZ region
+  console.log('Step 2: Detecting MRZ region...');
+  const mrzRegion = detectMRZRegion(processedImage);
+
+  if (!mrzRegion || !mrzRegion.data) {
+    console.log('No MRZ region detected');
+    
+    // Try OCR on full image if model is available
+    if (ocrModelInitialized && wasmModule.ocr_mrz_inference) {
+      const ocrResult = wasmModule.ocr_mrz_inference(
+        new Uint8Array(processedImage.data.buffer),
+        width,
+        height
+      );
+      
+      if (ocrResult && ocrResult.text) {
+        const wasmResult = wasmModule.parse_mrz_text(ocrResult.text);
+        if (wasmResult) {
+          return convertWasmResult(wasmResult);
+        }
+      }
+    }
+    
     return null;
+  }
+
+  console.log(`MRZ region found: ${mrzRegion.width}x${mrzRegion.height}`);
+
+  // Step 3: Upscale MRZ region
+  const mrzImageData = new ImageData(
+    new Uint8ClampedArray(mrzRegion.data),
+    mrzRegion.width,
+    mrzRegion.height
+  );
+  const upscaledMRZ = upscaleImage(mrzImageData, 2);
+
+  // Step 4: Run OCR on MRZ region
+  if (ocrModelInitialized && wasmModule.ocr_mrz_inference) {
+    console.log('Step 3: Running WASM OCR on MRZ region...');
+    
+    const ocrResult = wasmModule.ocr_mrz_inference(
+      new Uint8Array(upscaledMRZ.data.buffer),
+      upscaledMRZ.width,
+      upscaledMRZ.height
+    );
+
+    if (ocrResult && ocrResult.text) {
+      console.log('OCR Result:', ocrResult.text);
+      
+      const wasmResult = wasmModule.parse_mrz_text(ocrResult.text);
+      if (wasmResult) {
+        return {
+          ...convertWasmResult(wasmResult),
+          bounds: mrzRegion.bounds ? {
+            x: mrzRegion.bounds[0],
+            y: mrzRegion.bounds[1],
+            width: mrzRegion.bounds[2],
+            height: mrzRegion.bounds[3],
+          } : undefined,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Convert WASM result to MRZResult
+ */
+function convertWasmResult(wasmResult: any): MRZResult {
+  return {
+    documentType: wasmResult.document_type,
+    documentNumber: wasmResult.document_number,
+    dateOfBirth: wasmResult.date_of_birth,
+    dateOfExpiry: wasmResult.date_of_expiry,
+    nationality: wasmResult.nationality,
+    sex: wasmResult.sex,
+    surname: wasmResult.surname,
+    givenNames: wasmResult.given_names,
+    optionalData: wasmResult.optional_data,
+    issuingCountry: wasmResult.issuing_country,
+    rawMrz: wasmResult.raw_mrz,
+    confidence: wasmResult.confidence,
+  };
+}
+
+/**
+ * Perform OCR inference on image data (direct access to WASM OCR)
+ */
+export async function ocrInference(imageData: ImageData): Promise<OCRResult | null> {
+  if (!wasmModule) {
+    await initWasm();
+  }
+
+  if (!ocrModelInitialized) {
+    throw new Error('OCR model not initialized. Call initOCRModel first.');
+  }
+
+  try {
+    const result = wasmModule.ocr_inference(
+      new Uint8Array(imageData.data.buffer),
+      imageData.width,
+      imageData.height
+    );
+    return result as OCRResult;
+  } catch (error) {
+    console.error('OCR inference failed:', error);
+    return null;
+  }
+}
+
+/**
+ * Detect text regions in image
+ */
+export async function detectTextRegions(imageData: ImageData): Promise<any[]> {
+  if (!wasmModule) {
+    await initWasm();
+  }
+
+  try {
+    const regions = wasmModule.detect_text_regions(
+      new Uint8Array(imageData.data.buffer),
+      imageData.width,
+      imageData.height
+    );
+    return regions || [];
+  } catch (error) {
+    console.error('Text detection failed:', error);
+    return [];
   }
 }
 

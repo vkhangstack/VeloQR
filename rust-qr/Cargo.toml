@@ -17,6 +17,12 @@ js-sys = "0.3"
 web-sys = { version = "0.3", features = ["console"] }
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
+ndarray = "0.15"
+getrandom = { version = "0.2", features = ["js"] }
+
+# Tract is too heavy for WASM, we'll use a simpler approach
+# tract-onnx = { version = "0.21", default-features = false }
+imp = "0.1.0"
 
 [profile.dev]
 opt-level = 0

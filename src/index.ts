@@ -1,6 +1,9 @@
 export { QRScanner } from './QRScanner';
 export { QRImageScanner } from './QRImageScanner';
 export { useQRScanner } from './hooks/useQRScanner';
+export { useMRZScanner } from './hooks/useMRZScanner';
+export { MRZImageScanner} from './MRZImageScanner';
+export { MRZScanner } from './MRZScanner';
 export {
   CameraSwitchIcon,
   CameraSwitchIconSimple,
@@ -41,6 +44,21 @@ export {
   getRecommendedVideoConstraints,
   isLowEndDevice,
 } from './utils/performanceOptimizer';
+// OCR exports for MRZ
+export {
+  initOCRWasm,
+  initOCRModel,
+  ocrMRZInference,
+  ocrMRZLines,
+  drawOCROverlay,
+  cleanupOCR,
+} from './utils/ocr-processor';
+// MRZ with OCR exports
+export {
+  configureOCRModel,
+  initOCRModel as initMRZOCRModel,
+  isOCRModelInitialized,
+} from './utils/mrz-processor';
 export type {
   QRCodeResult,
   QRScannerProps,
@@ -52,6 +70,21 @@ export type {
   WasmConfig,
   WorkerConfig,
   CameraDevice,
+  // OCR types for MRZ
+  OCRResult,
+  OCRBoundingBox,
+  MRZImageScannerProps,
+  MRZResult,
+  MRZScannerProps,
+  UseMRZScannerOptions,
+  UseMRZScannerReturn,
 } from './types';
 export type { SupportedLanguage } from './constants/defaultTexts';
 export type { CameraCapabilities } from './utils/camera-manager';
+export type { MRZScanningAnimationProps } from './components/MRZScanningAnimation';
+export type { MRZImageProcessingAnimationProps } from './components/MRZImageProcessingAnimation';
+
+export { MRZScanningAnimation } from './components/MRZScanningAnimation';
+export { MRZImageProcessingAnimation } from './components/MRZImageProcessingAnimation';
+export { getMRZAnimationStyles } from './components/MRZAnimationStyles';
+export { initWasm as initMRZWasm, decodeMRZFromImageData, drawMRZOverlay, formatMRZDate, validateCheckDigit, validateMRZ, cleanup as cleanupMRZ } from './utils/mrz-processor';

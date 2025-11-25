@@ -1,5 +1,3 @@
-// Performance optimization utilities
-
 /**
  * Throttle function to limit execution rate
  */
@@ -8,23 +6,11 @@ export function throttle<T extends (...args: any[]) => any>(
   delay: number
 ): (...args: Parameters<T>) => void {
   let lastCall = 0;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  return function (this: any, ...args: Parameters<T>) {
+  return (...args: Parameters<T>) => {
     const now = Date.now();
-    const timeSinceLastCall = now - lastCall;
-
-    if (timeSinceLastCall >= delay) {
+    if (now - lastCall >= delay) {
       lastCall = now;
-      func.apply(this, args);
-    } else {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      timeoutId = setTimeout(() => {
-        lastCall = Date.now();
-        func.apply(this, args);
-      }, delay - timeSinceLastCall);
+      func(...args);
     }
   };
 }
@@ -36,15 +22,10 @@ export function debounce<T extends (...args: any[]) => any>(
   func: T,
   delay: number
 ): (...args: Parameters<T>) => void {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  return function (this: any, ...args: Parameters<T>) {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => {
-      func.apply(this, args);
-    }, delay);
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func(...args), delay);
   };
 }
 
@@ -55,16 +36,13 @@ export function rafThrottle<T extends (...args: any[]) => any>(
   func: T
 ): (...args: Parameters<T>) => void {
   let rafId: number | null = null;
-
-  return function (this: any, ...args: Parameters<T>) {
-    if (rafId !== null) {
-      return;
+  return (...args: Parameters<T>) => {
+    if (rafId === null) {
+      rafId = requestAnimationFrame(() => {
+        func(...args);
+        rafId = null;
+      });
     }
-
-    rafId = requestAnimationFrame(() => {
-      func.apply(this, args);
-      rafId = null;
-    });
   };
 }
 
@@ -84,39 +62,27 @@ export function getOptimizedCanvasContext(
 /**
  * Scale down image data for faster processing
  */
-export function downscaleImageData(
-  imageData: ImageData,
-  scale: number = 0.5
-): ImageData {
+export function downscaleImageData(imageData: ImageData, scale: number = 0.5): ImageData {
   const { width, height, data } = imageData;
   const newWidth = Math.floor(width * scale);
   const newHeight = Math.floor(height * scale);
+  const newData = new Uint8ClampedArray(newWidth * newHeight * 4);
 
-  const canvas = document.createElement('canvas');
-  canvas.width = newWidth;
-  canvas.height = newHeight;
+  for (let y = 0; y < newHeight; y++) {
+    for (let x = 0; x < newWidth; x++) {
+      const srcX = Math.floor(x / scale);
+      const srcY = Math.floor(y / scale);
+      const srcIdx = (srcY * width + srcX) * 4;
+      const dstIdx = (y * newWidth + x) * 4;
 
-  const ctx = canvas.getContext('2d');
-  if (!ctx) {
-    return imageData;
+      newData[dstIdx] = data[srcIdx];
+      newData[dstIdx + 1] = data[srcIdx + 1];
+      newData[dstIdx + 2] = data[srcIdx + 2];
+      newData[dstIdx + 3] = data[srcIdx + 3];
+    }
   }
 
-  // Create temporary canvas with original size
-  const tempCanvas = document.createElement('canvas');
-  tempCanvas.width = width;
-  tempCanvas.height = height;
-  const tempCtx = tempCanvas.getContext('2d');
-
-  if (!tempCtx) {
-    return imageData;
-  }
-
-  tempCtx.putImageData(imageData, 0, 0);
-
-  // Draw scaled down
-  ctx.drawImage(tempCanvas, 0, 0, width, height, 0, 0, newWidth, newHeight);
-
-  return ctx.getImageData(0, 0, newWidth, newHeight);
+  return new ImageData(newData, newWidth, newHeight);
 }
 
 /**
@@ -125,13 +91,15 @@ export function downscaleImageData(
 export function isLowEndDevice(): boolean {
   // Check hardware concurrency
   const cores = navigator.hardwareConcurrency || 2;
-  if (cores <= 2) {
-    return true;
-  }
+  if (cores <= 2) return true;
 
   // Check device memory (if available)
-  const memory = (navigator as any).deviceMemory;
-  if (memory && memory <= 4) {
+  const nav = navigator as any;
+  if (nav.deviceMemory && nav.deviceMemory < 4) return true;
+
+  // Check connection type (if available)
+  const conn = nav.connection;
+  if (conn && conn.effectiveType && ['slow-2g', '2g'].includes(conn.effectiveType)) {
     return true;
   }
 
@@ -143,49 +111,26 @@ export function isLowEndDevice(): boolean {
  */
 export function getRecommendedScanDelay(): number {
   if (isLowEndDevice()) {
-    return 800; // Slower devices
+    return 500; // Slower scan for low-end devices
   }
-
-  // Check if mobile
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  );
-
-  return isMobile ? 600 : 500;
+  return 200; // Faster scan for capable devices
 }
 
 /**
  * Get recommended video constraints based on device
  */
 export function getRecommendedVideoConstraints(): MediaTrackConstraints {
-  const isLowEnd = isLowEndDevice();
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    navigator.userAgent
-  );
-
-  if (isLowEnd) {
+  if (isLowEndDevice()) {
     return {
-      facingMode: 'environment',
       width: { ideal: 640 },
       height: { ideal: 480 },
-      frameRate: { ideal: 24, max: 24 },
+      frameRate: { ideal: 15, max: 20 },
     };
   }
-
-  if (isMobile) {
-    return {
-      facingMode: 'environment',
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
-      frameRate: { ideal: 30, max: 30 },
-    };
-  }
-
   return {
-    facingMode: 'environment',
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
-    frameRate: { ideal: 30, max: 30 },
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30 },
   };
 }
 
@@ -214,28 +159,22 @@ export class FrameBuffer {
    * Get merged frame by averaging all frames in buffer
    */
   getMergedFrame(): ImageData | null {
-    if (this.frames.length === 0) {
-      return null;
-    }
-
-    if (this.frames.length === 1) {
-      return this.frames[0];
-    }
+    if (this.frames.length === 0) return null;
+    if (this.frames.length === 1) return this.frames[0];
 
     const { width, height } = this.frames[0];
-    const merged = new ImageData(width, height);
+    const mergedData = new Uint8ClampedArray(width * height * 4);
     const frameCount = this.frames.length;
 
-    // Average pixel values across all frames
-    for (let i = 0; i < merged.data.length; i++) {
+    for (let i = 0; i < mergedData.length; i++) {
       let sum = 0;
-      for (let f = 0; f < frameCount; f++) {
-        sum += this.frames[f].data[i];
+      for (const frame of this.frames) {
+        sum += frame.data[i];
       }
-      merged.data[i] = Math.round(sum / frameCount);
+      mergedData[i] = Math.round(sum / frameCount);
     }
 
-    return merged;
+    return new ImageData(mergedData, width, height);
   }
 
   /**
@@ -261,43 +200,52 @@ export function mergeTwoFrames(frame1: ImageData, frame2: ImageData): ImageData 
     throw new Error('Frames must have the same dimensions');
   }
 
-  const merged = new ImageData(frame1.width, frame1.height);
+  const { width, height } = frame1;
+  const mergedData = new Uint8ClampedArray(width * height * 4);
 
-  for (let i = 0; i < merged.data.length; i++) {
-    merged.data[i] = Math.round((frame1.data[i] + frame2.data[i]) / 2);
+  for (let i = 0; i < mergedData.length; i++) {
+    mergedData[i] = Math.round((frame1.data[i] + frame2.data[i]) / 2);
   }
 
-  return merged;
+  return new ImageData(mergedData, width, height);
 }
 
 /**
  * Enhance frame quality for better QR detection (contrast adjustment)
  */
 export function enhanceFrame(imageData: ImageData): ImageData {
-  const enhanced = new ImageData(imageData.width, imageData.height);
-  const data = imageData.data;
-  const enhancedData = enhanced.data;
-
-  // Simple contrast enhancement
-  const contrastFactor = 1.5;
-  const intercept = 128 * (1 - contrastFactor);
+  const { width, height, data } = imageData;
+  const enhanced = new Uint8ClampedArray(data.length);
+  
+  // Increase contrast
+  const contrast = 1.2;
+  const factor = (259 * (contrast * 255 + 255)) / (255 * (259 - contrast * 255));
 
   for (let i = 0; i < data.length; i += 4) {
-    // Apply contrast to RGB channels
-    enhancedData[i] = Math.max(0, Math.min(255, data[i] * contrastFactor + intercept));
-    enhancedData[i + 1] = Math.max(0, Math.min(255, data[i + 1] * contrastFactor + intercept));
-    enhancedData[i + 2] = Math.max(0, Math.min(255, data[i + 2] * contrastFactor + intercept));
-    enhancedData[i + 3] = data[i + 3]; // Alpha channel
+    enhanced[i] = Math.min(255, Math.max(0, factor * (data[i] - 128) + 128));
+    enhanced[i + 1] = Math.min(255, Math.max(0, factor * (data[i + 1] - 128) + 128));
+    enhanced[i + 2] = Math.min(255, Math.max(0, factor * (data[i + 2] - 128) + 128));
+    enhanced[i + 3] = data[i + 3];
   }
 
-  return enhanced;
+  return new ImageData(enhanced, width, height);
 }
 
 /**
  * Safari-specific frame optimization
  */
 export function optimizeFrameForSafari(imageData: ImageData): ImageData {
-  // Safari benefits from lower resolution and enhanced contrast
-  const downscaled = downscaleImageData(imageData, 0.75);
-  return enhanceFrame(downscaled);
+  // Safari sometimes has color space issues, normalize the frame
+  const { width, height, data } = imageData;
+  const optimized = new Uint8ClampedArray(data.length);
+
+  for (let i = 0; i < data.length; i += 4) {
+    // Ensure proper gamma correction
+    optimized[i] = data[i];
+    optimized[i + 1] = data[i + 1];
+    optimized[i + 2] = data[i + 2];
+    optimized[i + 3] = 255; // Force full opacity
+  }
+
+  return new ImageData(optimized, width, height);
 }

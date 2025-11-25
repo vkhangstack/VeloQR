@@ -23,6 +23,8 @@ export const MRZScanner: React.FC<MRZScannerProps> = ({
   showCameraSwitch = false,
   preferredCamera = 'environment',
   language,
+  modelUrl,
+  useOCR = false,
 }) => {
   const [showDetection, setShowDetection] = useState(false);
   const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(
@@ -68,6 +70,8 @@ export const MRZScanner: React.FC<MRZScannerProps> = ({
     onError,
     videoConstraints,
     preferredCamera,
+    modelUrl,
+    useOCR,
   });
 
   const handleCameraSwitch = async () => {
