@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "setup": "mkdir -p public/rust-qr/pkg && cp -r ../release/bundle/bin/complete/* public/rust-qr/pkg/ && cp -r ../release/bundle/bin/complete/worker.js public/worker.js",
+    "setup": "mkdir -p public/rust-qr/pkg && cp -r ../release/bundle/bin/complete/* public/rust-qr/pkg/",
     "dev": "npm run setup && vite",
     "build": "npm run setup && vite build",
     "preview": "vite preview"

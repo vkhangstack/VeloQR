@@ -11,7 +11,7 @@ function App() {
 
   // Configure Web Worker on mount
   useEffect(() => {
-    configureWorker(true, { workerUrl: '/worker.js' });
+    configureWorker(true, { workerUrl: '/rust-qr/pkg/worker.js' });
     console.log('Web Worker enabled for QR processing');
   }, []);
 
