@@ -10,14 +10,24 @@ pub struct QRCodeResult {
     pub bounds: Vec<(f64, f64)>,
 }
 
+// Only include console logging in debug builds
+#[cfg(debug_assertions)]
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
 }
 
+// Logging macro - only active in debug builds
+#[cfg(debug_assertions)]
 macro_rules! console_log {
     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+}
+
+// No-op logging in release builds
+#[cfg(not(debug_assertions))]
+macro_rules! console_log {
+    ($($t:tt)*) => {()}
 }
 
 /// Decode QR codes from image data (RGBA format)
@@ -58,8 +68,8 @@ pub fn decode_qr_from_image(
                     bounds,
                 });
             }
-            Err(e) => {
-                console_log!("Failed to decode QR code: {:?}", e);
+            Err(_e) => {
+                console_log!("Failed to decode QR code: {:?}", _e);
             }
         }
     }
