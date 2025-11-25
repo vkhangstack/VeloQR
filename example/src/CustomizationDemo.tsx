@@ -6,7 +6,7 @@ import {
   getTextsByLanguage,
   SupportedLanguage,
   DEFAULT_TEXTS_EN,
-} from 'veloqr';
+} from '@vkhangstack/veloqr';
 
 export const CustomizationDemo: React.FC = () => {
   const [language, setLanguage] = useState<SupportedLanguage>('vi');
@@ -162,7 +162,7 @@ export const CustomizationDemo: React.FC = () => {
       <div style={{ marginTop: '30px', padding: '20px', background: '#f0f0f0', borderRadius: '8px' }}>
         <h3>Code Example</h3>
         <pre style={{ background: '#2d2d2d', color: '#f8f8f2', padding: '15px', borderRadius: '4px', overflow: 'auto' }}>
-{`import { QRScanner, getTextsByLanguage } from 'veloqr';
+          {`import { QRScanner, getTextsByLanguage } from 'veloqr';
 
 <QRScanner
   onScan={(results) => console.log(results)}
