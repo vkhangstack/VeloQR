@@ -7,6 +7,7 @@ import peerDepsExternal from 'rollup-plugin-peer-deps-external';
 import postcss from 'rollup-plugin-postcss';
 import copy from 'rollup-plugin-copy';
 import obfuscator from 'rollup-plugin-obfuscator';
+import terser from '@rollup/plugin-terser';
 import { readFileSync } from 'fs';
 
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
@@ -49,6 +50,21 @@ export default [
       }),
       postcss({
         minimize: true,
+      }),
+      // Remove console.log in production
+      isProduction && terser({
+        compress: {
+          drop_console: true, // Remove all console.* statements
+          drop_debugger: true,
+          pure_funcs: ['console.log', 'console.info', 'console.debug', 'console.warn'],
+        },
+        mangle: {
+          keep_classnames: true,
+          keep_fnames: false,
+        },
+        format: {
+          comments: false,
+        },
       }),
       copy({
         targets: [

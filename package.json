@@ -14,7 +14,7 @@
     "build:rollup": "rollup -c",
     "build:rollup:prod": "NODE_ENV=production rollup -c",
     "build": "npm run clean && npm run build:wasm && npm run build:rollup && node scripts/fix-release-package.js",
-    "build:prod": "npm run clean && npm run build:wasm && npm run build:rollup:prod && node scripts/fix-release-package.js",
+    "build:prod": "npm run clean && npm run build:wasm && npm run build:rollup:prod && node scripts/fix-release-package.js && NODE_ENV=production node scripts/minify-worker.mjs",
     "dev": "rollup -c -w",
     "clean": "rm -rf release/",
     "example": "cd example && npm ci && npm run dev",
@@ -63,6 +63,7 @@
     "@rollup/plugin-commonjs": "^25.0.7",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^11.1.6",
     "@types/react": "^18.2.48",
     "@types/react-dom": "^18.2.18",
@@ -77,8 +78,5 @@
     "rollup-plugin-postcss": "^4.0.2",
     "tslib": "^2.6.2",
     "typescript": "^5.3.3"
-  },
-  "dependencies": {
-    "tesseract.js": "^6.0.1"
   }
 }
