@@ -15,6 +15,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     frameMergeCount = 3,
     optimizeForSafari = isSafariOrIOS(),
     preferredCamera = 'environment',
+    resolutionScale = 1,
     crop,
     sharpen,
   } = options;
@@ -28,10 +29,12 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   const [currentCamera, setCurrentCamera] = useState<CameraDevice | null>(null);
 
   const streamRef = useRef<MediaStream | null>(null);
-  const scanIntervalRef = useRef<number | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
   const wasmInitializedRef = useRef(false);
   const isScanningRef = useRef(false);
   const frameBufferRef = useRef<FrameBuffer | null>(null);
+  const canvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
+  const lastScanTimeRef = useRef<number>(0);
 
   // Initialize frame buffer if frame merging is enabled
   useEffect(() => {
@@ -59,29 +62,53 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       return;
     }
 
+    // Throttle based on scanDelay
+    const now = performance.now();
+    if (now - lastScanTimeRef.current < scanDelay) {
+      return;
+    }
+
     isScanningRef.current = true;
+    lastScanTimeRef.current = now;
 
     try {
+      // Apply resolution scaling
+      const scaledWidth = Math.floor(video.videoWidth * resolutionScale);
+      const scaledHeight = Math.floor(video.videoHeight * resolutionScale);
+
       // Set canvas dimensions only once or when needed
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+      if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
+        canvas.width = scaledWidth;
+        canvas.height = scaledHeight;
+        // Reset cached context when dimensions change
+        canvasContextRef.current = null;
       }
 
-      const ctx = canvas.getContext('2d', {
-        alpha: false,
-        desynchronized: true,
-        willReadFrequently: true,
-      });
+      // Get or create canvas context (cached for performance)
+      if (!canvasContextRef.current) {
+        canvasContextRef.current = canvas.getContext('2d', {
+          alpha: false,
+          desynchronized: true,
+          willReadFrequently: true,
+        });
+      }
+
+      const ctx = canvasContextRef.current;
       if (!ctx) {
         return;
       }
 
-      // Draw video frame to canvas
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Apply image smoothing for better quality when scaling
+      if (resolutionScale !== 1) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+      }
+
+      // Draw video frame to canvas with scaling
+      ctx.drawImage(video, 0, 0, scaledWidth, scaledHeight);
 
       // Get image data from canvas
-      let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
 
       // Apply Safari optimization if enabled
       if (optimizeForSafari) {
@@ -116,7 +143,20 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     } finally {
       isScanningRef.current = false;
     }
-  }, [isScanning, onScan, onError, enableFrameMerging, optimizeForSafari, crop, sharpen]);
+  }, [isScanning, onScan, onError, enableFrameMerging, optimizeForSafari, resolutionScale, crop, sharpen, scanDelay]);
+
+  // Render loop using requestAnimationFrame for smooth canvas updates
+  const renderLoop = useCallback(() => {
+    if (!isScanning) {
+      return;
+    }
+
+    // Call scan which will handle throttling
+    scan();
+
+    // Continue the loop
+    animationFrameRef.current = requestAnimationFrame(renderLoop);
+  }, [isScanning, scan]);
 
   const getFacingMode = useCallback((camera: string): 'user' | 'environment' => {
     if (camera === 'front' || camera === 'user') {
@@ -210,23 +250,23 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       setIsScanning(true);
       setError(null);
 
-      // Start scanning loop
-      scanIntervalRef.current = window.setInterval(scan, scanDelay);
+      // Start render loop with requestAnimationFrame
+      animationFrameRef.current = requestAnimationFrame(renderLoop);
     } catch (err) {
       const startError = err instanceof Error ? err : new Error('Failed to start camera');
       setError(startError);
       onError?.(startError);
       throw startError;
     }
-  }, [scan, scanDelay, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode]);
+  }, [renderLoop, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode]);
 
   const stopScanning = useCallback(() => {
     setIsScanning(false);
 
-    // Stop the scan interval
-    if (scanIntervalRef.current !== null) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
+    // Cancel animation frame
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
 
     // Stop all tracks in the stream
@@ -244,6 +284,12 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     if (frameBufferRef.current) {
       frameBufferRef.current.clear();
     }
+
+    // Clear canvas context cache
+    canvasContextRef.current = null;
+
+    // Reset scan time
+    lastScanTimeRef.current = 0;
   }, []);
 
   const switchCamera = useCallback(async (facingMode?: 'front' | 'back' | 'environment' | 'user') => {
@@ -268,21 +314,22 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     };
   }, [stopScanning]);
 
-  // Update scan interval when scanning state or scanDelay changes
+  // Start/restart render loop when scanning state changes
   useEffect(() => {
-    if (isScanning) {
-      if (scanIntervalRef.current !== null) {
-        clearInterval(scanIntervalRef.current);
-      }
-      scanIntervalRef.current = window.setInterval(scan, scanDelay);
+    if (isScanning && animationFrameRef.current === null) {
+      animationFrameRef.current = requestAnimationFrame(renderLoop);
+    } else if (!isScanning && animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
 
     return () => {
-      if (scanIntervalRef.current !== null) {
-        clearInterval(scanIntervalRef.current);
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
     };
-  }, [isScanning, scanDelay, scan]);
+  }, [isScanning, renderLoop]);
 
   return {
     videoRef,

@@ -86,6 +86,7 @@ export interface UseQRScannerOptions {
   frameMergeCount?: number; // Number of frames to merge (default: 3)
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations (default: auto-detect)
   preferredCamera?: 'front' | 'back' | 'environment' | 'user'; // Preferred camera
+  resolutionScale?: number; // Scale factor for processing resolution (0.5 = half res, 1 = full res, default: 1)
   crop?: {
     x: number; // Crop area for scanning (in pixels)
     y: number; // Crop area for scanning (in pixels)
