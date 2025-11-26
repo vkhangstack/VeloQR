@@ -1,7 +1,10 @@
 [package]
 name = "veloqr"
-version = "1.0.0"
+version = "1.1.2"
 edition = "2021"
+description = "QR code scanner for web worker in WebAssembly with Rust" 
+repository = "https://github.com/vkhangstack/veloqr"
+license = "MIT OR Apache-2.0"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ["-O3", "--enable-bulk-memory", "--enable-nontrapping-float-to-int"]
