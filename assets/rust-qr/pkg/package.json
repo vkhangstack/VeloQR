@@ -1,0 +1,15 @@
+{
+  "name": "veloqr",
+  "type": "module",
+  "version": "1.0.0",
+  "files": [
+    "veloqr_bg.wasm",
+    "veloqr.js",
+    "veloqr.d.ts"
+  ],
+  "main": "veloqr.js",
+  "types": "veloqr.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
