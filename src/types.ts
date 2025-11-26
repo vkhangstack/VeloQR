@@ -25,6 +25,21 @@ export interface AnimationText {
   stageTexts?: string[]; // Custom stage texts for MRZ processing (e.g., ["Detecting...", "Extracting...", "Validating..."])
 }
 
+export interface ErrorMessage {
+  title: string;
+  message: string;
+  instructions?: string[];
+}
+
+export interface ErrorMessages {
+  permissionDenied?: ErrorMessage;
+  notFound?: ErrorMessage;
+  notReadable?: ErrorMessage;
+  overconstrained?: ErrorMessage;
+  unknown?: ErrorMessage;
+  loading?: string;
+}
+
 export interface AnimationConfig {
   showScanningLine?: boolean;
   showCorners?: boolean;
@@ -51,6 +66,7 @@ export interface QRScannerProps {
   highlightBorderWidth?: number;
   animationText?: AnimationText;
   animationConfig?: AnimationConfig;
+  errorMessages?: ErrorMessages; // Custom error messages
   enableFrameMerging?: boolean; // Enable temporal frame averaging
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations
   showCameraSwitch?: boolean; // Show camera switch button
@@ -86,6 +102,7 @@ export interface UseQRScannerOptions {
   frameMergeCount?: number; // Number of frames to merge (default: 3)
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations (default: auto-detect)
   preferredCamera?: 'front' | 'back' | 'environment' | 'user'; // Preferred camera
+  resolutionScale?: number; // Scale factor for processing resolution (0.5 = half res, 1 = full res, default: 1)
   crop?: {
     x: number; // Crop area for scanning (in pixels)
     y: number; // Crop area for scanning (in pixels)
@@ -152,6 +169,7 @@ export interface MRZScannerProps {
   highlightBorderWidth?: number;
   animationText?: AnimationText;
   animationConfig?: AnimationConfig;
+  errorMessages?: ErrorMessages; // Custom error messages
   showCameraSwitch?: boolean;
   preferredCamera?: 'front' | 'back' | 'environment' | 'user';
   language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts

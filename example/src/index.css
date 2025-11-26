@@ -115,6 +115,70 @@ h1 {
 
 .scanner-container {
   margin-top: 24px;
+  width: 100%;
+  max-width: 100%;
+  height: 600px;
+  max-height: calc(100vh - 400px);
+  min-height: 300px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #000;
+}
+
+.image-scanner-container {
+  margin-top: 24px;
+  width: 100%;
+  max-width: 100%;
+  height: 1200px;
+  max-height: calc(100vh - 400px);
+  min-height: 300px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #fff;
+  padding: 20px;
+}
+
+/* Mobile optimizations */
+@media (max-width: 768px) {
+  .scanner-container,
+  .image-scanner-container {
+    height: 400px;
+    max-height: 60vh;
+    min-height: 250px;
+  }
+
+  .image-scanner-container {
+    padding: 12px;
+  }
+
+  .app {
+    padding: 16px;
+  }
+
+  body {
+    padding: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .scanner-container,
+  .image-scanner-container {
+    height: 350px;
+    max-height: 50vh;
+  }
+
+  .image-scanner-container {
+    padding: 8px;
+  }
+}
+
+/* iOS Safari specific fixes */
+@supports (-webkit-touch-callout: none) {
+  .scanner-container,
+  .image-scanner-container {
+    height: -webkit-fill-available;
+    max-height: calc(100vh - 400px);
+  }
 }
 
 code {

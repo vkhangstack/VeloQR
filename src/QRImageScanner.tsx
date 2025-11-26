@@ -136,8 +136,10 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
 
   const containerStyle: React.CSSProperties = {
     width: '100%',
-    maxWidth: '640px',
-    margin: '0 auto',
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'auto',
     ...style,
   };
 

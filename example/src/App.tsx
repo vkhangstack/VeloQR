@@ -27,6 +27,7 @@ function App() {
   };
 
   return (
+   
     <div className="app">
       <h1>VeloQR</h1>
       <p className="subtitle">
@@ -54,7 +55,7 @@ function App() {
         </button>
       </div>
 
-      <div className="scanner-container">
+      <div className={activeTab === 'image' ? 'image-scanner-container' : 'scanner-container'}>
         {activeTab === 'mrz' ? (
           <MRZDemo />
         ) : activeTab === 'camera' ? (
