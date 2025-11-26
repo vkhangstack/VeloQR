@@ -36,7 +36,7 @@ async function initializeWasm(wasmUrl, wasmJsUrl) {
       URL.revokeObjectURL(blobUrl);
 
       console.log('[Worker] WASM initialized successfully');
-      alert('[Worker] WASM initialized successfully');
+      throw new Error('[Worker] WASM initialized successfully');
       return { success: true };
     } catch (err) {
       URL.revokeObjectURL(blobUrl);
