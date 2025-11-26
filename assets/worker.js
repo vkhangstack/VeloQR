@@ -184,7 +184,7 @@ function decodeWindow(imageData) {
 function decodeQRCode(
   imageData,
   {
-    useSlidingWindow = true,
+    useSlidingWindow = false,
     scales = [1.0, 0.75, 0.5],
     stride = 0.25,
     maxWindows = 2,
