@@ -1,5 +1,10 @@
 // QR Code Processing Web Worker
 // This runs in a separate thread to keep the main UI responsive
+/**
+ * author: vkhangstack
+ * version: 1.1.2
+ * license: MIT
+ */
 
 let wasmModule = null;
 let isInitialized = false;
