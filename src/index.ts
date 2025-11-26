@@ -55,3 +55,5 @@ export type {
 } from './types';
 export type { SupportedLanguage } from './constants/defaultTexts';
 export type { CameraCapabilities } from './utils/camera-manager';
+export { CAMERA_ERROR_CODES, CameraError, createCameraError, mapBrowserErrorToCode } from './constants/cameraErrors';
+export type { CameraErrorCode } from './constants/cameraErrors';

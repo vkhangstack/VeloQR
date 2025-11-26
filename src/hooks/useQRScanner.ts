@@ -4,6 +4,7 @@ import { initWasm, decodeQRFromImageData } from '../utils/qr-processor';
 import { getCameraDevices, identifyCameras } from '../utils/camera-manager';
 import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
+import { createCameraError } from '../constants/cameraErrors';
 
 export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerReturn {
   const {
@@ -253,10 +254,11 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       // Start render loop with requestAnimationFrame
       animationFrameRef.current = requestAnimationFrame(renderLoop);
     } catch (err) {
-      const startError = err instanceof Error ? err : new Error('Failed to start camera');
-      setError(startError);
-      onError?.(startError);
-      throw startError;
+      // Convert to CameraError with error code
+      const cameraError = createCameraError(err);
+      setError(cameraError);
+      onError?.(cameraError);
+      throw cameraError;
     }
   }, [renderLoop, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode]);
 

@@ -3,6 +3,7 @@ import { MRZResult, UseMRZScannerOptions, UseMRZScannerReturn, CameraDevice } fr
 import { initWasm, decodeMRZFromImageData } from '../utils/mrz-processor';
 import { getCameraDevices } from '../utils/camera-manager';
 import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
+import { createCameraError } from '../constants/cameraErrors';
 
 export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScannerReturn {
   const {
@@ -216,10 +217,11 @@ export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScanner
       // Start scanning loop
       scanIntervalRef.current = window.setInterval(scan, scanDelay);
     } catch (err) {
-      const startError = err instanceof Error ? err : new Error('Failed to start camera');
-      setError(startError);
-      onError?.(startError);
-      throw startError;
+      // Convert to CameraError with error code
+      const cameraError = createCameraError(err);
+      setError(cameraError);
+      onError?.(cameraError);
+      throw cameraError;
     }
   }, [scan, scanDelay, onError, videoConstraints, preferredCamera, getFacingMode]);
 

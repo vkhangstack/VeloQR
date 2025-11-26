@@ -11,6 +11,35 @@ export const DEFAULT_TEXTS_EN = {
     dropzoneText: 'Drag and drop an image here, or click to select',
     resultLabel: 'QR',
   },
+  // Error messages
+  errors: {
+    permissionDenied: {
+      title: 'Camera Permission Denied',
+      message: 'Camera access was denied. Please enable camera permissions to use the scanner.',
+      instructions: [
+        'Click the camera icon in your browser\'s address bar',
+        'Select "Allow" to enable camera access',
+        'Reload the page if needed',
+      ],
+    },
+    notFound: {
+      title: 'No Camera Found',
+      message: 'No camera device was detected on this device. Please connect a camera and try again.',
+    },
+    notReadable: {
+      title: 'Camera Not Accessible',
+      message: 'The camera is currently in use by another application. Please close other apps and try again.',
+    },
+    overconstrained: {
+      title: 'Camera Constraints Error',
+      message: 'The requested camera settings are not supported by your device.',
+    },
+    unknown: {
+      title: 'Camera Error',
+      message: 'An unexpected error occurred while accessing the camera. Please try again.',
+    },
+    loading: 'Initializing camera...',
+  },
   // MRZ Scanner texts
   mrz: {
     scanning: 'Scanning MRZ...',
@@ -42,6 +71,35 @@ export const DEFAULT_TEXTS_VI = {
     instruction: 'Đặt mã QR trong khung hình',
     dropzoneText: 'Kéo thả ảnh vào đây, hoặc nhấp để chọn',
     resultLabel: 'QR',
+  },
+  // Error messages
+  errors: {
+    permissionDenied: {
+      title: 'Quyền Truy Cập Camera Bị Từ Chối',
+      message: 'Quyền truy cập camera đã bị từ chối. Vui lòng cho phép truy cập camera để sử dụng máy quét.',
+      instructions: [
+        'Nhấp vào biểu tượng camera trên thanh địa chỉ trình duyệt',
+        'Chọn "Cho phép" để bật quyền truy cập camera',
+        'Tải lại trang nếu cần',
+      ],
+    },
+    notFound: {
+      title: 'Không Tìm Thấy Camera',
+      message: 'Không phát hiện được thiết bị camera trên thiết bị này. Vui lòng kết nối camera và thử lại.',
+    },
+    notReadable: {
+      title: 'Không Thể Truy Cập Camera',
+      message: 'Camera hiện đang được sử dụng bởi ứng dụng khác. Vui lòng đóng các ứng dụng khác và thử lại.',
+    },
+    overconstrained: {
+      title: 'Lỗi Cấu Hình Camera',
+      message: 'Cài đặt camera yêu cầu không được thiết bị của bạn hỗ trợ.',
+    },
+    unknown: {
+      title: 'Lỗi Camera',
+      message: 'Đã xảy ra lỗi không mong muốn khi truy cập camera. Vui lòng thử lại.',
+    },
+    loading: 'Đang khởi tạo camera...',
   },
   // MRZ Scanner texts
   mrz: {
@@ -75,6 +133,35 @@ export const DEFAULT_TEXTS_ZH = {
     dropzoneText: '将图片拖放到此处，或点击选择',
     resultLabel: '二维码',
   },
+  // Error messages
+  errors: {
+    permissionDenied: {
+      title: '摄像头权限被拒绝',
+      message: '摄像头访问权限被拒绝。请启用摄像头权限以使用扫描仪。',
+      instructions: [
+        '点击浏览器地址栏中的摄像头图标',
+        '选择"允许"以启用摄像头访问',
+        '如有需要，请重新加载页面',
+      ],
+    },
+    notFound: {
+      title: '未找到摄像头',
+      message: '此设备上未检测到摄像头设备。请连接摄像头后重试。',
+    },
+    notReadable: {
+      title: '无法访问摄像头',
+      message: '摄像头目前正被其他应用程序使用。请关闭其他应用程序后重试。',
+    },
+    overconstrained: {
+      title: '摄像头配置错误',
+      message: '您的设备不支持所请求的摄像头设置。',
+    },
+    unknown: {
+      title: '摄像头错误',
+      message: '访问摄像头时发生意外错误。请重试。',
+    },
+    loading: '正在初始化摄像头...',
+  },
   // MRZ Scanner texts
   mrz: {
     scanning: '正在扫描MRZ...',
@@ -106,6 +193,35 @@ export const DEFAULT_TEXTS_JA = {
     instruction: 'QRコードをフレーム内に配置してください',
     dropzoneText: '画像をここにドラッグアンドドロップするか、クリックして選択してください',
     resultLabel: 'QR',
+  },
+  // Error messages
+  errors: {
+    permissionDenied: {
+      title: 'カメラ権限が拒否されました',
+      message: 'カメラへのアクセスが拒否されました。スキャナーを使用するにはカメラの権限を有効にしてください。',
+      instructions: [
+        'ブラウザのアドレスバーにあるカメラアイコンをクリックしてください',
+        '「許可」を選択してカメラアクセスを有効にしてください',
+        '必要に応じてページを再読み込みしてください',
+      ],
+    },
+    notFound: {
+      title: 'カメラが見つかりません',
+      message: 'このデバイスでカメラデバイスが検出されませんでした。カメラを接続して再試行してください。',
+    },
+    notReadable: {
+      title: 'カメラにアクセスできません',
+      message: 'カメラは現在、別のアプリケーションによって使用されています。他のアプリを閉じて再試行してください。',
+    },
+    overconstrained: {
+      title: 'カメラ設定エラー',
+      message: '要求されたカメラ設定はお使いのデバイスでサポートされていません。',
+    },
+    unknown: {
+      title: 'カメラエラー',
+      message: 'カメラへのアクセス中に予期しないエラーが発生しました。再試行してください。',
+    },
+    loading: 'カメラを初期化中...',
   },
   // MRZ Scanner texts
   mrz: {
@@ -139,6 +255,35 @@ export const DEFAULT_TEXTS_ES = {
     dropzoneText: 'Arrastra y suelta una imagen aquí, o haz clic para seleccionar',
     resultLabel: 'QR',
   },
+  // Error messages
+  errors: {
+    permissionDenied: {
+      title: 'Permiso de Cámara Denegado',
+      message: 'Se denegó el acceso a la cámara. Por favor, habilite los permisos de cámara para usar el escáner.',
+      instructions: [
+        'Haz clic en el ícono de la cámara en la barra de direcciones de tu navegador',
+        'Selecciona "Permitir" para habilitar el acceso a la cámara',
+        'Recarga la página si es necesario',
+      ],
+    },
+    notFound: {
+      title: 'Cámara No Encontrada',
+      message: 'No se detectó ningún dispositivo de cámara en este dispositivo. Por favor, conecta una cámara e inténtalo de nuevo.',
+    },
+    notReadable: {
+      title: 'Cámara No Accesible',
+      message: 'La cámara está actualmente en uso por otra aplicación. Por favor, cierra otras aplicaciones e inténtalo de nuevo.',
+    },
+    overconstrained: {
+      title: 'Error de Configuración de Cámara',
+      message: 'La configuración de cámara solicitada no es compatible con tu dispositivo.',
+    },
+    unknown: {
+      title: 'Error de Cámara',
+      message: 'Ocurrió un error inesperado al acceder a la cámara. Por favor, inténtalo de nuevo.',
+    },
+    loading: 'Inicializando cámara...',
+  },
   // MRZ Scanner texts
   mrz: {
     scanning: 'Escaneando MRZ...',
@@ -170,6 +315,35 @@ export const DEFAULT_TEXTS_FR = {
     instruction: 'Placez le code QR dans le cadre',
     dropzoneText: 'Glissez-déposez une image ici, ou cliquez pour sélectionner',
     resultLabel: 'QR',
+  },
+  // Error messages
+  errors: {
+    permissionDenied: {
+      title: 'Permission de Caméra Refusée',
+      message: 'L\'accès à la caméra a été refusé. Veuillez activer les permissions de caméra pour utiliser le scanner.',
+      instructions: [
+        'Cliquez sur l\'icône de la caméra dans la barre d\'adresse de votre navigateur',
+        'Sélectionnez "Autoriser" pour activer l\'accès à la caméra',
+        'Rechargez la page si nécessaire',
+      ],
+    },
+    notFound: {
+      title: 'Caméra Non Trouvée',
+      message: 'Aucun périphérique de caméra n\'a été détecté sur cet appareil. Veuillez connecter une caméra et réessayer.',
+    },
+    notReadable: {
+      title: 'Caméra Non Accessible',
+      message: 'La caméra est actuellement utilisée par une autre application. Veuillez fermer les autres applications et réessayer.',
+    },
+    overconstrained: {
+      title: 'Erreur de Configuration de la Caméra',
+      message: 'Les paramètres de caméra demandés ne sont pas pris en charge par votre appareil.',
+    },
+    unknown: {
+      title: 'Erreur de Caméra',
+      message: 'Une erreur inattendue s\'est produite lors de l\'accès à la caméra. Veuillez réessayer.',
+    },
+    loading: 'Initialisation de la caméra...',
   },
   // MRZ Scanner texts
   mrz: {

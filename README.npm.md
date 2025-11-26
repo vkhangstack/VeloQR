@@ -10,7 +10,7 @@ A high-performance React library for scanning QR codes using WebAssembly and Rus
 - 🔍 **Multiple QR Detection**: Detect and decode multiple QR codes in a single frame
 - 🎨 **Custom Styling**: Fully customizable UI with styling props and overlay options
 - 📘 **TypeScript Support**: Full TypeScript definitions included
-- 🪶 **Lightweight**: Optimized WASM binary for minimal bundle size
+- 📦 **Lightweight**: Optimized WASM binary for minimal bundle size
 
 ## Installation
 
