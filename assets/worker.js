@@ -187,7 +187,7 @@ function decodeQRCode(
     useSlidingWindow = true,
     scales = [1.0, 0.75, 0.5],
     stride = 0.25,
-    maxWindows = 5,
+    maxWindows = 2,
     crop = null,
     sharpen = null,
   }
