@@ -5,6 +5,7 @@ import { getCameraDevices, identifyCameras } from '../utils/camera-manager';
 import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
 import { createCameraError } from '../constants/cameraErrors';
+import { triggerVibrate } from '../utils/vibrate';
 
 export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerReturn {
   const {
@@ -19,6 +20,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     resolutionScale = 1,
     crop,
     sharpen,
+    vibrate = false,
   } = options;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -129,9 +131,8 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       const results = await decodeQRFromImageData(imageData, { crop, sharpen });
 
       if (results.length > 0) {
-         // vibrate if supported
-        if (navigator.vibrate) {
-          navigator.vibrate(100);
+        if (vibrate) {
+          triggerVibrate();
         }
         setLastResults(results);
         onScan?.(results);

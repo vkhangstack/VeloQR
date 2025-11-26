@@ -30,6 +30,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   language,
   crop,
   sharpen,
+  vibrate = false,
 }) => {
   const [showDetection, setShowDetection] = useState(false);
   const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(
@@ -98,6 +99,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     preferredCamera,
     crop,
     sharpen,
+    vibrate
   });
 
   const handleCameraSwitch = async () => {
@@ -320,7 +322,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
           }
         }
       `}</style>
-      
+
       <div className={`qr-scanner ${className}`} style={containerStyle}>
         <video
           ref={videoRef}
@@ -341,139 +343,139 @@ export const QRScanner: React.FC<QRScannerProps> = ({
         {/* Loading indicator */}
         {!videoReady && <LoadingSpinner text={errors.loading} />}
 
-      {/* Scanning and detection animations */}
-      {videoReady && (
-        <ScanningAnimation
-          isScanning={isScanning}
-          isDetected={showDetection}
-          scanningText={texts.scanning}
-          detectedText={texts.detected}
-          color={config.color}
-          showScanLine={config.showScanLine}
-          showCorners={config.showCorners}
-          showStatusText={config.showStatusText}
-          scanLineSpeed={config.scanLineSpeed}
-        />
-      )}
+        {/* Scanning and detection animations */}
+        {videoReady && (
+          <ScanningAnimation
+            isScanning={isScanning}
+            isDetected={showDetection}
+            scanningText={texts.scanning}
+            detectedText={texts.detected}
+            color={config.color}
+            showScanLine={config.showScanLine}
+            showCorners={config.showCorners}
+            showStatusText={config.showStatusText}
+            scanLineSpeed={config.scanLineSpeed}
+          />
+        )}
 
-      {error && (() => {
-        const getErrorContent = (): ErrorMessage => {
-          if (error instanceof CameraError) {
-            switch (error.code) {
-              case CAMERA_ERROR_CODES.PERMISSION_DENIED:
-                return errors.permissionDenied;
-              case CAMERA_ERROR_CODES.NOT_FOUND:
-                return errors.notFound;
-              case CAMERA_ERROR_CODES.NOT_READABLE:
-                return errors.notReadable;
-              case CAMERA_ERROR_CODES.OVERCONSTRAINED:
-                return errors.overconstrained;
-              default:
-                return errors.unknown;
+        {error && (() => {
+          const getErrorContent = (): ErrorMessage => {
+            if (error instanceof CameraError) {
+              switch (error.code) {
+                case CAMERA_ERROR_CODES.PERMISSION_DENIED:
+                  return errors.permissionDenied;
+                case CAMERA_ERROR_CODES.NOT_FOUND:
+                  return errors.notFound;
+                case CAMERA_ERROR_CODES.NOT_READABLE:
+                  return errors.notReadable;
+                case CAMERA_ERROR_CODES.OVERCONSTRAINED:
+                  return errors.overconstrained;
+                default:
+                  return errors.unknown;
+              }
             }
-          }
-          return errors.unknown;
-        };
+            return errors.unknown;
+          };
 
-        const errorContent = getErrorContent();
+          const errorContent = getErrorContent();
 
-        return (
+          return (
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                backgroundColor: '#FFEBEE',
+                color: '#B71C1C',
+                padding: '20px',
+                borderRadius: '12px',
+                fontSize: '14px',
+                maxWidth: '90%',
+                width: '400px',
+                boxShadow: '0 4px 20px #D32F2F',
+                zIndex: 100,
+              }}
+            >
+              <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {errorContent.title}
+              </div>
+              <div style={{ marginBottom: '12px', lineHeight: '1.5' }}>
+                {errorContent.message}
+              </div>
+              {errorContent.instructions && errorContent.instructions.length > 0 && (
+                <div style={{ marginTop: '12px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.15)', borderRadius: '8px', fontSize: '13px', lineHeight: '1.6' }}>
+                  <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
+                    {errorContent.instructions.map((instruction, index) => (
+                      <li key={index}>{instruction}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+        {lastResults.length > 0 && (
           <div
             style={{
               position: 'absolute',
-              top: '50%',
+              top: '10px',
               left: '50%',
-              transform: 'translate(-50%, -50%)',
-              backgroundColor: '#FFEBEE',
-              color: '#B71C1C',
-              padding: '20px',
-              borderRadius: '12px',
+              transform: 'translateX(-50%)',
+              backgroundColor: 'rgba(0, 255, 0, 0.8)',
+              color: 'white',
+              padding: '8px 16px',
+              borderRadius: '4px',
               fontSize: '14px',
               maxWidth: '90%',
-              width: '400px',
-              boxShadow: '0 4px 20px #D32F2F',
-              zIndex: 100,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
             }}
           >
-            <div style={{ fontWeight: 'bold', fontSize: '16px', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {errorContent.title}
-            </div>
-            <div style={{ marginBottom: '12px', lineHeight: '1.5' }}>
-              {errorContent.message}
-            </div>
-            {errorContent.instructions && errorContent.instructions.length > 0 && (
-              <div style={{ marginTop: '12px', padding: '12px', backgroundColor: 'rgba(255, 255, 255, 0.15)', borderRadius: '8px', fontSize: '13px', lineHeight: '1.6' }}>
-                <ul style={{ margin: '4px 0', paddingLeft: '20px' }}>
-                  {errorContent.instructions.map((instruction, index) => (
-                    <li key={index}>{instruction}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            {formatDetectedCount(lastResults.length)}
           </div>
-        );
-      })()}
-      {lastResults.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '10px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            backgroundColor: 'rgba(0, 255, 0, 0.8)',
-            color: 'white',
-            padding: '8px 16px',
-            borderRadius: '4px',
-            fontSize: '14px',
-            maxWidth: '90%',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {formatDetectedCount(lastResults.length)}
-        </div>
-      )}
+        )}
 
-      {/* Camera Switch Button */}
-      {showCameraSwitch && availableCameras.length > 1 && (
-        <button
-          onClick={handleCameraSwitch}
-          disabled={isRotating}
-          style={{
-            position: 'absolute',
-            top: '10px',
-            right: '10px',
-            backgroundColor: 'rgba(0, 0, 0, 0.6)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '50%',
-            width: '48px',
-            height: '48px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: isRotating ? 'not-allowed' : 'pointer',
-            fontSize: '24px',
-            zIndex: 10,
-            transition: 'all 0.3s ease',
-            opacity: isRotating ? 0.7 : 1,
-          }}
-          title={`Switch to ${currentFacing === 'front' ? 'back' : 'front'} camera`}
-        >
-          <div
+        {/* Camera Switch Button */}
+        {showCameraSwitch && availableCameras.length > 1 && (
+          <button
+            onClick={handleCameraSwitch}
+            disabled={isRotating}
             style={{
-              transform: isRotating ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: 'transform 0.6s ease',
+              position: 'absolute',
+              top: '10px',
+              right: '10px',
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '50%',
+              width: '48px',
+              height: '48px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              cursor: isRotating ? 'not-allowed' : 'pointer',
+              fontSize: '24px',
+              zIndex: 10,
+              transition: 'all 0.3s ease',
+              opacity: isRotating ? 0.7 : 1,
             }}
+            title={`Switch to ${currentFacing === 'front' ? 'back' : 'front'} camera`}
           >
-            <CameraSwitchIcon size={28} color="white" />
-          </div>
-        </button>
-      )}
+            <div
+              style={{
+                transform: isRotating ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.6s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <CameraSwitchIcon size={28} color="white" />
+            </div>
+          </button>
+        )}
       </div>
     </>
   );

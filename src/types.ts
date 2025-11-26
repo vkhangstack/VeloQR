@@ -79,6 +79,7 @@ export interface QRScannerProps {
     height: number; // Crop area for scanning (in pixels)
   };
   sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
+  vibrate?: boolean; // Vibrate when QR code is detected  
 }
 
 export interface QRImageScannerProps {
@@ -91,6 +92,7 @@ export interface QRImageScannerProps {
   animationText?: AnimationText;
   animationConfig?: AnimationConfig;
   language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
+  vibrate?: boolean; // Vibrate when QR code is detected  
 }
 
 export interface UseQRScannerOptions {
@@ -110,6 +112,7 @@ export interface UseQRScannerOptions {
     height: number; // Crop area for scanning (in pixels)
   };
   sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
+  vibrate?: boolean; // Vibrate when QR code is detected  
 }
 
 export interface UseQRScannerReturn {
