@@ -7,7 +7,6 @@
     "dev": "npm run setup && vite",
     "build": "npm run setup && vite build",
     "preview": "vite preview",
-    "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
 
   },
