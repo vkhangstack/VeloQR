@@ -107,6 +107,57 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     };
   }, []);
 
+  // Sync canvas dimensions with video's rendered size
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+
+    if (!video || !canvas) return;
+
+    const updateCanvasSize = () => {
+      // Get the actual rendered dimensions of the video element
+      const rect = video.getBoundingClientRect();
+      const parentRect = video.offsetParent?.getBoundingClientRect();
+
+      // Update canvas to match video's rendered size
+      if (canvas.style.width !== `${rect.width}px` || canvas.style.height !== `${rect.height}px`) {
+        canvas.style.width = `${rect.width}px`;
+        canvas.style.height = `${rect.height}px`;
+        canvas.style.top = `${rect.top - (parentRect?.top || 0)}px`;
+        canvas.style.left = `${rect.left - (parentRect?.left || 0)}px`;
+      }
+    };
+
+    // Update on video metadata load
+    const handleLoadedMetadata = () => {
+      updateCanvasSize();
+    };
+
+    // Update on video resize (handles orientation changes)
+    const handleResize = () => {
+      updateCanvasSize();
+    };
+
+    video.addEventListener('loadedmetadata', handleLoadedMetadata);
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
+    // Initial update
+    if (video.readyState >= 1) {
+      updateCanvasSize();
+    }
+
+    // Periodic check for mobile browsers that might delay rendering
+    const intervalId = setInterval(updateCanvasSize, 500);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      clearInterval(intervalId);
+    };
+  }, [isScanning]);
+
   // Draw overlay when results change
   useEffect(() => {
     if (canvasRef.current && lastResults.length > 0) {
@@ -129,18 +180,26 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     position: 'relative',
     width: '100%',
     maxWidth: '100%',
+    height: '100%',
+    maxHeight: '100%',
     margin: '0 auto',
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     ...style,
   };
 
   const videoStyle: React.CSSProperties = {
     width: '100%',
-    height: 'auto',
+    height: '100%',
+    maxHeight: '100%',
     display: 'block',
     objectFit: 'cover',
     transform: 'translateZ(0)', // Force GPU acceleration
     backfaceVisibility: 'hidden',
     WebkitBackfaceVisibility: 'hidden',
+    WebkitTransform: 'translateZ(0)',
   };
 
   const canvasStyle: React.CSSProperties = {
@@ -150,6 +209,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     width: '100%',
     height: '100%',
     pointerEvents: 'none',
+    objectFit: 'cover',
   };
 
   const overlayStyle: React.CSSProperties = {
@@ -165,16 +225,39 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   };
 
   return (
-    <div className={`qr-scanner ${className}`} style={containerStyle}>
-      <video
-        ref={videoRef}
-        style={videoStyle}
-        playsInline
-        muted
-        autoPlay
-      />
-      <canvas ref={canvasRef} style={canvasStyle} />
-      {showOverlay && <div style={overlayStyle} />}
+    <>
+      <style>{`
+        .qr-scanner {
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+        }
+        .qr-scanner video {
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+        }
+        .qr-scanner canvas {
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+        }
+        @supports (-webkit-touch-callout: none) {
+          .qr-scanner {
+            height: -webkit-fill-available !important;
+          }
+          .qr-scanner video {
+            height: -webkit-fill-available !important;
+          }
+        }
+      `}</style>
+      <div className={`qr-scanner ${className}`} style={containerStyle}>
+        <video
+          ref={videoRef}
+          style={videoStyle}
+          playsInline
+          muted
+          autoPlay
+        />
+        <canvas ref={canvasRef} style={canvasStyle} />
+        {showOverlay && <div style={overlayStyle} />}
 
       {/* Scanning and detection animations */}
       <ScanningAnimation
@@ -267,6 +350,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
           </div>
         </button>
       )}
-    </div>
+      </div>
+    </>
   );
 };
