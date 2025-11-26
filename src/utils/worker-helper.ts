@@ -3,6 +3,7 @@ import type { QRCodeResult } from '../types';
 
 export class WorkerHelper {
   private worker: Worker | null = null;
+  private workerBlobUrl: string | null = null;
   private messageId = 0;
   private pendingMessages = new Map<number, {
     resolve: (value: any) => void;
@@ -14,9 +15,28 @@ export class WorkerHelper {
       return;
     }
 
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
-        this.worker = new Worker(workerUrl);
+        // Fetch worker code and create Blob URL to bypass CORS restrictions
+        let workerBlobUrl: string;
+        let isBlobUrl = false;
+        try {
+          const response = await fetch(workerUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch worker: ${response.status}`);
+          }
+          const workerCode = await response.text();
+          const blob = new Blob([workerCode], { type: 'application/javascript' });
+          workerBlobUrl = URL.createObjectURL(blob);
+          isBlobUrl = true;
+          this.workerBlobUrl = workerBlobUrl;
+        } catch (fetchError) {
+          // If fetch fails (maybe it's a local URL), try direct worker creation
+          console.warn('[WorkerHelper] Failed to fetch worker, trying direct creation:', fetchError);
+          workerBlobUrl = workerUrl;
+        }
+
+        this.worker = new Worker(workerBlobUrl);
 
         this.worker.onmessage = (e) => {
           const { type, id, success, results, error } = e.data;
@@ -99,6 +119,11 @@ export class WorkerHelper {
       this.worker.postMessage({ type: 'terminate' });
       this.worker.terminate();
       this.worker = null;
+    }
+    // Cleanup blob URL to prevent memory leak
+    if (this.workerBlobUrl) {
+      URL.revokeObjectURL(this.workerBlobUrl);
+      this.workerBlobUrl = null;
     }
     this.pendingMessages.clear();
   }
