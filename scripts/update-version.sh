@@ -121,7 +121,7 @@ fi
 # Build if requested
 if [ "$DO_BUILD" = true ]; then
     print_info "Building project..."
-    if npm run build; then
+    if npm run build:prod; then
         print_success "Build completed"
     else
         print_error "Build failed"
@@ -160,7 +160,7 @@ print_success "Done! New version: ${NEW_VERSION}"
 echo ""
 print_info "Next steps:"
 if [ "$DO_BUILD" = false ]; then
-    echo "  - Run 'npm run build' to build with new version"
+    echo "  - Run 'npm run build:prod' to build with new version"
 fi
 if [ "$DO_COMMIT" = false ]; then
     echo "  - Review changes: git diff package.json"
