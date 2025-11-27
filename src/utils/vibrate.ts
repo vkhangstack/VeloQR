@@ -1,13 +1,17 @@
+ export function isVibrationSupported(): boolean {
+      return "vibrate" in navigator && typeof navigator.vibrate === "function";
+  }
+  
 // Ring in 200 mili-second (ms)
 export function triggerVibrate() {
-    if ("vibrate" in navigator) {
+    if (isVibrationSupported()) {
         navigator.vibrate(200);
     }
 }
 
 // Ring in pattern: Run 500ms, pause 200ms, run 500ms
 export function triggerPatternVibrate() {
-    if ("vibrate" in navigator) {
+    if (isVibrationSupported()) {
         navigator.vibrate([500, 200, 500]);
     }
 }
