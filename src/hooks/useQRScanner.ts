@@ -1,7 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice } from '../types';
 import { initWasm, decodeQRFromImageData } from '../utils/qr-processor';
-import { getCameraDevices, identifyCameras } from '../utils/camera-manager';
 import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
 import { createCameraError } from '../constants/cameraErrors';
@@ -175,10 +174,6 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         wasmInitializedRef.current = true;
       }
 
-      // Get available cameras
-      const devices = await getCameraDevices();
-      setAvailableCameras(devices);
-
       const facingMode = getFacingMode(cameraFacing || preferredCamera);
 
       // Build video constraints
@@ -186,7 +181,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         facingMode,
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        frameRate: { ideal: 30, max: 30 },
+        frameRate: { ideal: 30},
         ...videoConstraints,
       };
 
@@ -195,13 +190,25 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         constraints = getSafariOptimizedConstraints(constraints);
       }
 
-      // Request camera access
+      // Request camera access FIRST - only open camera ONCE to avoid double flash
       const stream = await navigator.mediaDevices.getUserMedia({
         video: constraints,
         audio: false,
       });
 
       streamRef.current = stream;
+
+      // Get available cameras AFTER camera is already open (no double flash)
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const devices = allDevices
+        .filter((device) => device.kind === 'videoinput')
+        .map((device) => ({
+          deviceId: device.deviceId,
+          label: device.label || `Camera ${device.deviceId.slice(0, 5)}`,
+          kind: 'videoinput' as const,
+          groupId: device.groupId,
+        }));
+      setAvailableCameras(devices);
 
       // Identify current camera
       const videoTrack = stream.getVideoTracks()[0];
@@ -302,7 +309,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     stopScanning();
 
     // Wait a bit for cleanup
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     // Start with new camera
     if (wasScanning) {
