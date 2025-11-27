@@ -1,6 +1,4 @@
-// QR Code Processing Web Worker
-// This runs in a separate thread to keep the main UI responsive
-/**
+/* VeloQR Processing Web Worker
  * author: vkhangstack
  * version: 1.1.2
  * license: MIT
