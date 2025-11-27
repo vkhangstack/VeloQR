@@ -75,27 +75,6 @@ function App() {
 export default App;
 ```
 
-## Configuration
-
-### WASM Loading
-
-By default, VeloQR loads WASM files from CDN. You can customize this:
-
-```tsx
-import { configureWasm } from '@vkhangstack/veloqr';
-
-// Load from CDN (default)
-configureWasm('cdn');
-
-// Load from specific version
-configureWasm({ version: '1.0.2' });
-
-// Load from custom URL
-configureWasm({
-  wasmUrl: '/path/to/veloqr_bg.wasm',
-  wasmJsUrl: '/path/to/veloqr.js'
-});
-```
 
 ## API Reference
 
