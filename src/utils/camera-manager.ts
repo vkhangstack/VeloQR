@@ -31,9 +31,11 @@ export interface CameraCapabilities {
 export async function getCameraDevices(): Promise<CameraDevice[]> {
   try {
     // Request permissions first
-    await navigator.mediaDevices.getUserMedia({ video: true });
+   const stream = await navigator.mediaDevices.getUserMedia({ video: true });
 
     const devices = await navigator.mediaDevices.enumerateDevices();
+    stream.getTracks().forEach(track => track.stop());
+    
     const videoDevices = devices
       .filter((device) => device.kind === 'videoinput')
       .map((device) => ({
@@ -56,7 +58,7 @@ export async function getCameraDevices(): Promise<CameraDevice[]> {
 export async function getCameraCapabilities(deviceId: string): Promise<CameraCapabilities | null> {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: deviceId } }
+      video: { deviceId: { ideal: deviceId } }
     });
 
     const track = stream.getVideoTracks()[0];
