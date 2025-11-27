@@ -1,7 +1,7 @@
 /* VeloQR Processing Web Worker
  * author: vkhangstack
- * version: 1.1.2
- * license: MIT
+ * version: 1.2.1
+ * license: MIT or Apache-2.0
  */
 
 let wasmModule = null;
