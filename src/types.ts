@@ -87,6 +87,7 @@ export interface QRScannerProps {
   enableFrameMerging?: boolean; // Enable temporal frame averaging
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations
   showCameraSwitch?: boolean; // Show camera switch button
+  showFlashSwitch?: boolean; // Show flash/torch switch button
   preferredCamera?: CameraFacing;
   language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
   crop?: {
@@ -194,6 +195,7 @@ export interface MRZScannerProps {
   animationConfig?: AnimationConfig;
   errorMessages?: ErrorMessages; // Custom error messages
   showCameraSwitch?: boolean;
+  showFlashSwitch?: boolean; // Show flash/torch switch button
   preferredCamera?: CameraFacing;
   language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
 }

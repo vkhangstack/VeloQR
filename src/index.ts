@@ -7,6 +7,12 @@ export {
   CameraSwitchIconFlip,
   CameraSwitchIconMinimal,
 } from './components/CameraSwitchIcon';
+export {
+  FlashSwitchIcon,
+  FlashSwitchIconFlashlight,
+  FlashSwitchIconMinimal,
+  FlashSwitchIconWithSlash,
+} from './components/FlashSwitchIcon';
 export { initWasm, decodeQRFromImageData, drawQROverlay, configureWorker, configureWorkerFromCDN, getWorkerConfig, cleanup } from './utils/qr-processor';
 export { configureWasm, configureWasmFromCDN, resetWasm, getWasmConfig } from './utils/wasm-loader';
 export {

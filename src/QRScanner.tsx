@@ -6,6 +6,7 @@ import { ScanningAnimation } from './components/ScanningAnimation';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { DEFAULT_TEXTS, getTextsByLanguage } from './constants/defaultTexts';
 import { CameraSwitchIcon } from './components/CameraSwitchIcon';
+import { FlashSwitchIcon } from './components/FlashSwitchIcon';
 import { CameraError, CAMERA_ERROR_CODES } from './constants/cameraErrors';
 
 export const QRScanner: React.FC<QRScannerProps> = ({
@@ -26,6 +27,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   enableFrameMerging = false,
   optimizeForSafari,
   showCameraSwitch = false,
+  showFlashSwitch = false,
   preferredCamera = CameraFacingMode.ENVIRONMENT,
   language,
   crop,
@@ -40,6 +42,8 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   );
   const [isRotating, setIsRotating] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [isFlashOn, setIsFlashOn] = useState(false);
+  const [flashSupported, setFlashSupported] = useState(false);
 
   // Get language-specific texts
   const langTexts = language ? getTextsByLanguage(language) : DEFAULT_TEXTS;
@@ -116,10 +120,33 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     setCurrentFacing(newFacing);
     await switchCamera(newFacing);
 
+    // Check flash support after switching camera
+    const supported = await getFlashSupport();
+    setFlashSupported(supported);
+    if (!supported && isFlashOn) {
+      setIsFlashOn(false);
+    }
+
     // Reset animation state after animation completes
     setTimeout(() => {
       setIsRotating(false);
     }, 600); // Match the CSS animation duration
+  };
+
+  const handleFlashToggle = async () => {
+    try {
+      if (isFlashOn) {
+        await turnOffFlash();
+        setIsFlashOn(false);
+      } else {
+        await turnOnFlash();
+        setIsFlashOn(true);
+      }
+    } catch (err) {
+      console.error('Flash toggle error:', err);
+      // Reset state on error
+      setIsFlashOn(false);
+    }
   };
 
   useEffect(() => {
@@ -128,6 +155,15 @@ export const QRScanner: React.FC<QRScannerProps> = ({
       stopScanning();
     };
   }, []);
+
+  // Check flash support when scanning starts
+  useEffect(() => {
+    if (isScanning) {
+      getFlashSupport().then(supported => {
+        setFlashSupported(supported);
+      });
+    }
+  }, [isScanning, getFlashSupport]);
 
   // Sync canvas dimensions with video's rendered size
   useEffect(() => {
@@ -479,6 +515,34 @@ export const QRScanner: React.FC<QRScannerProps> = ({
             >
               <CameraSwitchIcon size={28} color="white" />
             </div>
+          </button>
+        )}
+
+        {/* Flash Switch Button */}
+        {showFlashSwitch && flashSupported && (
+          <button
+            onClick={handleFlashToggle}
+            style={{
+              position: 'absolute',
+              top: '10px',
+              right: showCameraSwitch && availableCameras.length > 1 ? '68px' : '10px',
+              backgroundColor: isFlashOn ? 'rgba(255, 215, 0, 0.8)' : 'rgba(0, 0, 0, 0.6)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '50%',
+              width: '48px',
+              height: '48px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '24px',
+              zIndex: 10,
+              transition: 'all 0.3s ease',
+            }}
+            title={isFlashOn ? 'Turn off flash' : 'Turn on flash'}
+          >
+            <FlashSwitchIcon size={28} color="white" isOn={isFlashOn} />
           </button>
         )}
       </div>
