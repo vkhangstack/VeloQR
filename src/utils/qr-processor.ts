@@ -9,7 +9,7 @@ let wasmModule: any = null;
 let workerHelper: WorkerHelper | null = null;
 let lastScanTime = 0;
 const MIN_SCAN_INTERVAL = 100; // Minimum 100ms between scans
-let useWorker = false;
+let useWorker = true; // Default to using worker
 let workerConfig: WorkerConfig = {};
 
 /**
