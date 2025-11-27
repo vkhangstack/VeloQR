@@ -163,7 +163,7 @@ h1 {
 @media (max-width: 480px) {
   .scanner-container,
   .image-scanner-container {
-    height: 350px;
+    height: 450px;
     max-height: 50vh;
   }
 

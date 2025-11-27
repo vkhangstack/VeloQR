@@ -1,5 +1,8 @@
-// QR Code Processing Web Worker
-// This runs in a separate thread to keep the main UI responsive
+/* VeloQR Processing Web Worker
+ * author: vkhangstack
+ * version: 1.1.2
+ * license: MIT
+ */
 
 let wasmModule = null;
 let isInitialized = false;
@@ -184,7 +187,7 @@ function decodeWindow(imageData) {
 function decodeQRCode(
   imageData,
   {
-    useSlidingWindow = false,
+    useSlidingWindow = true,
     scales = [1.0, 0.75, 0.5],
     stride = 0.25,
     maxWindows = 10,

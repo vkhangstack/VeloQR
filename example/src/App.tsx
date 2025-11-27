@@ -70,6 +70,8 @@ function App() {
               showStatusText: false
             }}
             showCameraSwitch={true}
+            showFlashSwitch={true}
+            vibrate={true}
             enableFrameMerging={false}
             optimizeForSafari={false}
           />
