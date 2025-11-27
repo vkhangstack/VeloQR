@@ -43,11 +43,8 @@ function App() {
       onScan={handleScan}
       onError={handleError}
       scanDelay={500}
-      videoConstraints={{
-        facingMode: 'environment', // Use back camera
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      }}
+      showOverlay={true}
+      highlightColor="#667eea"
     />
   );
 }
@@ -140,6 +137,10 @@ interface QRCodeResult {
 - Safari 15+
 - Mobile browsers with camera access
 
+## Technical Support
+- React 16.8+
+- Node.js 14+
+
 ## Performance Tips
 
 1. **Adjust scan delay**: Increase `scanDelay` for better performance on low-end devices
@@ -151,6 +152,9 @@ interface QRCodeResult {
 - [GitHub Repository](https://github.com/vkhangstack/VeloQR)
 - [Full Documentation](https://github.com/vkhangstack/VeloQR#readme)
 - [Report Issues](https://github.com/vkhangstack/VeloQR/issues)
+
+## Donation
+This project is open source and free to use. If you find it useful, consider supporting its development: https://www.buymeacoffee.com/vkhangstack
 
 ## License
 
