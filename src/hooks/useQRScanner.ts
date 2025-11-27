@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice } from '../types';
+import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice, CameraFacingMode, CameraFacing } from '../types';
 import { initWasm, decodeQRFromImageData } from '../utils/qr-processor';
 import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
@@ -15,7 +15,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     enableFrameMerging = false,
     frameMergeCount = 3,
     optimizeForSafari = isSafariOrIOS(),
-    preferredCamera = 'environment',
+    preferredCamera = CameraFacingMode.ENVIRONMENT,
     resolutionScale = 1,
     crop,
     sharpen,
@@ -160,13 +160,13 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   }, [isScanning, scan]);
 
   const getFacingMode = useCallback((camera: string): 'user' | 'environment' => {
-    if (camera === 'front' || camera === 'user') {
-      return 'user';
+    if (camera === CameraFacingMode.FRONT || camera === CameraFacingMode.USER) {
+      return CameraFacingMode.USER;
     }
-    return 'environment';
+    return CameraFacingMode.ENVIRONMENT;
   }, []);
 
-  const startScanning = useCallback(async (cameraFacing?: 'front' | 'back' | 'environment' | 'user') => {
+  const startScanning = useCallback(async (cameraFacing?: CameraFacing) => {
     try {
       // Initialize WASM if not already done
       if (!wasmInitializedRef.current) {
@@ -181,7 +181,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         facingMode,
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        frameRate: { ideal: 30},
+        frameRate: { ideal: 30 },
         ...videoConstraints,
       };
 
@@ -302,7 +302,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     lastScanTimeRef.current = 0;
   }, []);
 
-  const switchCamera = useCallback(async (facingMode?: 'front' | 'back' | 'environment' | 'user') => {
+  const switchCamera = useCallback(async (facingMode?: CameraFacing) => {
     const wasScanning = isScanning;
 
     // Stop current scanning
@@ -341,6 +341,43 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     };
   }, [isScanning, renderLoop]);
 
+  const getFlashSupport = useCallback(async (): Promise<boolean> => {
+    if (!streamRef.current) {
+      return false;
+    }
+    const videoTrack = streamRef.current.getVideoTracks()[0];
+    const capabilities = videoTrack.getCapabilities();
+    return 'torch' in capabilities;
+  }, []);
+
+  const turnOnFlash = useCallback(async (): Promise<void> => {
+    if (!streamRef.current) {
+      throw new Error('Camera is not started');
+    }
+    const videoTrack = streamRef.current.getVideoTracks()[0];
+    const capabilities = videoTrack.getCapabilities();
+    if (!('torch' in capabilities)) {
+      throw new Error('Flash/torch is not supported on this device');
+    }
+    (await (videoTrack as any).applyConstraints({
+      advanced: [{ torch: true }]
+    }));
+  }, []);
+
+  const turnOffFlash = useCallback(async (): Promise<void> => {
+    if (!streamRef.current) {
+      throw new Error('Camera is not started');
+    }
+    const videoTrack = streamRef.current.getVideoTracks()[0];
+    const capabilities = videoTrack.getCapabilities() as any;
+    if (!('torch' in capabilities)) {
+      throw new Error('Flash/torch is not supported on this device');
+    }
+    (await (videoTrack as any).applyConstraints({
+      advanced: [{ torch: false }]
+    }));
+  }, []);
+
   return {
     videoRef,
     canvasRef,
@@ -352,5 +389,8 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     currentCamera,
     lastResults,
     error,
+    getFlashSupport,
+    turnOnFlash,
+    turnOffFlash,
   };
 }

@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { MRZResult, UseMRZScannerOptions, UseMRZScannerReturn, CameraDevice } from '../types';
+import { MRZResult, UseMRZScannerOptions, UseMRZScannerReturn, CameraDevice, CameraFacingMode, CameraFacing } from '../types';
 import { initWasm, decodeMRZFromImageData } from '../utils/mrz-processor';
 import { getCameraDevices } from '../utils/camera-manager';
 import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
@@ -11,7 +11,7 @@ export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScanner
     onScan,
     onError,
     videoConstraints = {},
-    preferredCamera = 'environment',
+    preferredCamera = CameraFacingMode.ENVIRONMENT,
   } = options;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -123,13 +123,13 @@ export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScanner
   }, [isScanning, onScan, onError, scanDelay]);
 
   const getFacingMode = useCallback((camera: string): 'user' | 'environment' => {
-    if (camera === 'front' || camera === 'user') {
-      return 'user';
+    if (camera === CameraFacingMode.FRONT || camera === CameraFacingMode.USER) {
+      return CameraFacingMode.USER;
     }
-    return 'environment';
+    return CameraFacingMode.ENVIRONMENT;
   }, []);
 
-  const startScanning = useCallback(async (cameraFacing?: 'front' | 'back' | 'environment' | 'user') => {
+  const startScanning = useCallback(async (cameraFacing?: CameraFacing) => {
     try {
       // Initialize WASM if not already done
       if (!wasmInitializedRef.current) {
@@ -246,7 +246,7 @@ export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScanner
     }
   }, []);
 
-  const switchCamera = useCallback(async (facingMode?: 'front' | 'back' | 'environment' | 'user') => {
+  const switchCamera = useCallback(async (facingMode?: CameraFacing) => {
     const wasScanning = isScanning;
 
     // Stop current scanning

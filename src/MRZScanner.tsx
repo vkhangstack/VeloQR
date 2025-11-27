@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MRZScannerProps, ErrorMessage } from './types';
+import { MRZScannerProps, ErrorMessage, CameraFacingMode, SimpleCameraFacing } from './types';
 import { useMRZScanner } from './hooks/useMRZScanner';
 import { drawMRZOverlay } from './utils/mrz-processor';
 import { MRZScanningAnimation } from './components/MRZScanningAnimation';
@@ -24,12 +24,14 @@ export const MRZScanner: React.FC<MRZScannerProps> = ({
   animationConfig = {},
   errorMessages = {},
   showCameraSwitch = false,
-  preferredCamera = 'environment',
+  preferredCamera = CameraFacingMode.ENVIRONMENT,
   language,
 }) => {
   const [showDetection, setShowDetection] = useState(false);
-  const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(
-    preferredCamera === 'user' || preferredCamera === 'front' ? 'front' : 'back'
+  const [currentFacing, setCurrentFacing] = useState<SimpleCameraFacing>(
+    preferredCamera === CameraFacingMode.USER || preferredCamera === CameraFacingMode.FRONT
+      ? SimpleCameraFacing.FRONT
+      : SimpleCameraFacing.BACK
   );
   const [isRotating, setIsRotating] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
@@ -89,7 +91,7 @@ export const MRZScanner: React.FC<MRZScannerProps> = ({
 
     setIsRotating(true);
     setVideoReady(false); // Hide video during camera switch
-    const newFacing = currentFacing === 'front' ? 'back' : 'front';
+    const newFacing = currentFacing === SimpleCameraFacing.FRONT ? SimpleCameraFacing.BACK : SimpleCameraFacing.FRONT;
     setCurrentFacing(newFacing);
     await switchCamera(newFacing);
 

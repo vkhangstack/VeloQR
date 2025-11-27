@@ -1,3 +1,20 @@
+// Camera facing mode enums
+export enum CameraFacingMode {
+  FRONT = 'front',
+  BACK = 'back',
+  ENVIRONMENT = 'environment',
+  USER = 'user',
+}
+
+export enum SimpleCameraFacing {
+  FRONT = 'front',
+  BACK = 'back',
+}
+
+// Type aliases for convenience
+export type CameraFacing = CameraFacingMode | `${CameraFacingMode}`;
+export type SimpleFacing = SimpleCameraFacing | `${SimpleCameraFacing}`;
+
 export interface QRCodeResult {
   data: string;
   version: number;
@@ -70,7 +87,7 @@ export interface QRScannerProps {
   enableFrameMerging?: boolean; // Enable temporal frame averaging
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations
   showCameraSwitch?: boolean; // Show camera switch button
-  preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+  preferredCamera?: CameraFacing;
   language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
   crop?: {
     x: number; // Crop area for scanning (in pixels)
@@ -103,7 +120,7 @@ export interface UseQRScannerOptions {
   enableFrameMerging?: boolean; // Enable temporal frame averaging for better accuracy
   frameMergeCount?: number; // Number of frames to merge (default: 3)
   optimizeForSafari?: boolean; // Apply Safari-specific optimizations (default: auto-detect)
-  preferredCamera?: 'front' | 'back' | 'environment' | 'user'; // Preferred camera
+  preferredCamera?: CameraFacing; // Preferred camera
   resolutionScale?: number; // Scale factor for processing resolution (0.5 = half res, 1 = full res, default: 1)
   crop?: {
     x: number; // Crop area for scanning (in pixels)
@@ -121,11 +138,14 @@ export interface UseQRScannerReturn {
   isScanning: boolean;
   startScanning: () => Promise<void>;
   stopScanning: () => void;
-  switchCamera: (facingMode?: 'front' | 'back' | 'environment' | 'user') => Promise<void>;
+  switchCamera: (facingMode?: CameraFacing) => Promise<void>;
   availableCameras: CameraDevice[];
   currentCamera: CameraDevice | null;
   lastResults: QRCodeResult[];
   error: Error | null;
+  getFlashSupport: () => Promise<boolean>;
+  turnOnFlash: () => Promise<void>;
+  turnOffFlash: () => Promise<void>;
 }
 
 export interface CameraDevice {
@@ -174,7 +194,7 @@ export interface MRZScannerProps {
   animationConfig?: AnimationConfig;
   errorMessages?: ErrorMessages; // Custom error messages
   showCameraSwitch?: boolean;
-  preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+  preferredCamera?: CameraFacing;
   language?: 'en' | 'vi' | 'zh' | 'ja' | 'es' | 'fr'; // Default language for texts
 }
 
@@ -195,7 +215,7 @@ export interface UseMRZScannerOptions {
   onScan?: (result: MRZResult) => void;
   onError?: (error: Error) => void;
   videoConstraints?: MediaTrackConstraints;
-  preferredCamera?: 'front' | 'back' | 'environment' | 'user';
+  preferredCamera?: CameraFacing;
 }
 
 export interface UseMRZScannerReturn {
@@ -204,7 +224,7 @@ export interface UseMRZScannerReturn {
   isScanning: boolean;
   startScanning: () => Promise<void>;
   stopScanning: () => void;
-  switchCamera: (facingMode?: 'front' | 'back' | 'environment' | 'user') => Promise<void>;
+  switchCamera: (facingMode?: CameraFacing) => Promise<void>;
   availableCameras: CameraDevice[];
   currentCamera: CameraDevice | null;
   lastResult: MRZResult | null;

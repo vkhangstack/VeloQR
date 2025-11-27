@@ -52,7 +52,10 @@ export type {
   WasmConfig,
   WorkerConfig,
   CameraDevice,
+  CameraFacing,
+  SimpleFacing,
 } from './types';
+export { CameraFacingMode, SimpleCameraFacing } from './types';
 export type { SupportedLanguage } from './constants/defaultTexts';
 export type { CameraCapabilities } from './utils/camera-manager';
 export { CAMERA_ERROR_CODES, CameraError, createCameraError, mapBrowserErrorToCode } from './constants/cameraErrors';

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { QRScannerProps, ErrorMessage } from './types';
+import { QRScannerProps, ErrorMessage, CameraFacingMode, SimpleCameraFacing } from './types';
 import { useQRScanner } from './hooks/useQRScanner';
 import { drawQROverlay } from './utils/qr-processor';
 import { ScanningAnimation } from './components/ScanningAnimation';
@@ -26,15 +26,17 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   enableFrameMerging = false,
   optimizeForSafari,
   showCameraSwitch = false,
-  preferredCamera = 'environment',
+  preferredCamera = CameraFacingMode.ENVIRONMENT,
   language,
   crop,
   sharpen,
   vibrate = false,
 }) => {
   const [showDetection, setShowDetection] = useState(false);
-  const [currentFacing, setCurrentFacing] = useState<'front' | 'back'>(
-    preferredCamera === 'user' || preferredCamera === 'front' ? 'front' : 'back'
+  const [currentFacing, setCurrentFacing] = useState<SimpleCameraFacing>(
+    preferredCamera === CameraFacingMode.USER || preferredCamera === CameraFacingMode.FRONT
+      ? SimpleCameraFacing.FRONT
+      : SimpleCameraFacing.BACK
   );
   const [isRotating, setIsRotating] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
@@ -89,6 +91,9 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     currentCamera,
     lastResults,
     error,
+    turnOnFlash,
+    turnOffFlash,
+    getFlashSupport,
   } = useQRScanner({
     scanDelay,
     onScan,
@@ -107,7 +112,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
 
     setIsRotating(true);
     setVideoReady(false); // Hide video during camera switch
-    const newFacing = currentFacing === 'front' ? 'back' : 'front';
+    const newFacing = currentFacing === SimpleCameraFacing.FRONT ? SimpleCameraFacing.BACK : SimpleCameraFacing.FRONT;
     setCurrentFacing(newFacing);
     await switchCamera(newFacing);
 
