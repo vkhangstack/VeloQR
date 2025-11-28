@@ -1,10 +1,12 @@
 import type { WasmConfig } from '../types';
 import packageJson from '../../package.json';
+import { getWasmCacheManager, type WasmCacheConfig } from './wasm-cache';
 
 // WASM loading utility with multiple strategies
 let wasmInstance: any = null;
 let wasmInitialized = false;
 let wasmConfig: WasmConfig = {};
+let cacheEnabled = true; // Cache is enabled by default
 
 // Default CDN configuration
 const PACKAGE_NAME = packageJson.name;
@@ -95,6 +97,15 @@ export function resetWasm(): void {
 }
 
 /**
+ * Enable or disable WASM caching
+ * @param enabled - Whether to enable cache (default: true)
+ */
+export function configureCaching(enabled: boolean): void {
+  cacheEnabled = enabled;
+  console.log(`[WasmLoader] Caching ${enabled ? 'enabled' : 'disabled'}`);
+}
+
+/**
  * Get current WASM configuration
  */
 export function getWasmConfig(): WasmConfig {
@@ -120,42 +131,42 @@ export async function loadWasm(): Promise<any> {
     configureWasmFromCDN();
   }
 
-  // Load from configured URL
   try {
     console.log('Attempting to load WASM from:', wasmConfig.wasmUrl);
 
-    // Fetch the WASM file
-    const wasmResponse = await fetch(wasmConfig.wasmUrl!);
-    if (!wasmResponse.ok) {
-      throw new Error(`HTTP ${wasmResponse.status}: ${wasmResponse.statusText}`);
-    }
+    let wasmBytes: ArrayBuffer;
+    let jsCode: string;
 
-    // Verify content type
-    const contentType = wasmResponse.headers.get('content-type');
-    if (contentType && !contentType.includes('application/wasm') && !contentType.includes('application/octet-stream')) {
-      console.warn(`Warning: WASM file served with content-type: ${contentType}. Expected 'application/wasm' or 'application/octet-stream'`);
-    }
+    // Try loading with cache if enabled
+    if (cacheEnabled) {
+      const cacheManager = getWasmCacheManager({
+        version: PACKAGE_VERSION
+      });
 
-    const wasmBytes = await wasmResponse.arrayBuffer();
+      try {
+        const cachedData = await cacheManager.loadWasm(
+          wasmConfig.wasmUrl!,
+          wasmConfig.wasmJsUrl!
+        );
 
-    // Verify this is actually a WASM file (check magic bytes)
-    const magicBytes = new Uint8Array(wasmBytes.slice(0, 4));
-    if (magicBytes[0] !== 0x00 || magicBytes[1] !== 0x61 || magicBytes[2] !== 0x73 || magicBytes[3] !== 0x6d) {
-      throw new Error('Invalid WASM file: Magic bytes do not match. The file may be served incorrectly (possibly as HTML).');
-    }
-
-    // Fetch and execute the JS wrapper
-    if (!wasmConfig.wasmJsUrl) {
-      throw new Error('wasmJsUrl is required');
-    }
-
-    const jsResponse = await fetch(wasmConfig.wasmJsUrl);
-    if (!jsResponse.ok) {
-      throw new Error(`Failed to load JS wrapper: HTTP ${jsResponse.status}`);
+        wasmBytes = cachedData.wasmBuffer;
+        jsCode = cachedData.jsCode;
+        console.log('WASM loaded from cache');
+      } catch (cacheError) {
+        console.warn('Cache load failed, falling back to direct fetch:', cacheError);
+        // Fallback to direct fetch
+        const result = await fetchWasmFiles(wasmConfig.wasmUrl!, wasmConfig.wasmJsUrl!);
+        wasmBytes = result.wasmBytes;
+        jsCode = result.jsCode;
+      }
+    } else {
+      // Direct fetch without cache
+      const result = await fetchWasmFiles(wasmConfig.wasmUrl!, wasmConfig.wasmJsUrl!);
+      wasmBytes = result.wasmBytes;
+      jsCode = result.jsCode;
     }
 
     // Execute the JS wrapper code
-    const jsCode = await jsResponse.text();
     const wasmModule = await executeWasmJs(jsCode, wasmBytes);
 
     wasmInstance = wasmModule;
@@ -181,6 +192,48 @@ export async function loadWasm(): Promise<any> {
       '});'
     );
   }
+}
+
+/**
+ * Fetch WASM files directly (without cache)
+ */
+async function fetchWasmFiles(wasmUrl: string, wasmJsUrl: string): Promise<{
+  wasmBytes: ArrayBuffer;
+  jsCode: string;
+}> {
+  // Fetch the WASM file
+  const wasmResponse = await fetch(wasmUrl);
+  if (!wasmResponse.ok) {
+    throw new Error(`HTTP ${wasmResponse.status}: ${wasmResponse.statusText}`);
+  }
+
+  // Verify content type
+  const contentType = wasmResponse.headers.get('content-type');
+  if (contentType && !contentType.includes('application/wasm') && !contentType.includes('application/octet-stream')) {
+    console.warn(`Warning: WASM file served with content-type: ${contentType}. Expected 'application/wasm' or 'application/octet-stream'`);
+  }
+
+  const wasmBytes = await wasmResponse.arrayBuffer();
+
+  // Verify this is actually a WASM file (check magic bytes)
+  const magicBytes = new Uint8Array(wasmBytes.slice(0, 4));
+  if (magicBytes[0] !== 0x00 || magicBytes[1] !== 0x61 || magicBytes[2] !== 0x73 || magicBytes[3] !== 0x6d) {
+    throw new Error('Invalid WASM file: Magic bytes do not match. The file may be served incorrectly (possibly as HTML).');
+  }
+
+  // Fetch the JS wrapper
+  if (!wasmJsUrl) {
+    throw new Error('wasmJsUrl is required');
+  }
+
+  const jsResponse = await fetch(wasmJsUrl);
+  if (!jsResponse.ok) {
+    throw new Error(`Failed to load JS wrapper: HTTP ${jsResponse.status}`);
+  }
+
+  const jsCode = await jsResponse.text();
+
+  return { wasmBytes, jsCode };
 }
 
 // Execute WASM JS wrapper code using Function constructor

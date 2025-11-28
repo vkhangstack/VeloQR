@@ -14,7 +14,19 @@ export {
   FlashSwitchIconWithSlash,
 } from './components/FlashSwitchIcon';
 export { initWasm, decodeQRFromImageData, drawQROverlay, configureWorker, configureWorkerFromCDN, getWorkerConfig, cleanup } from './utils/qr-processor';
-export { configureWasm, configureWasmFromCDN, resetWasm, getWasmConfig } from './utils/wasm-loader';
+export { configureWasm, configureWasmFromCDN, resetWasm, getWasmConfig, configureCaching } from './utils/wasm-loader';
+export {
+  initializeCache,
+  preloadWasmCache,
+  isWasmCached,
+  clearWasmCache,
+  getWasmCacheInfo,
+  updateWasmCache,
+  registerServiceWorker,
+  unregisterServiceWorker,
+  getServiceWorkerStatus,
+} from './utils/cache-management';
+export type { CacheOptions, CacheInfo } from './utils/cache-management';
 export {
   DEFAULT_TEXTS,
   DEFAULT_TEXTS_EN,

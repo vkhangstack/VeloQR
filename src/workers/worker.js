@@ -7,6 +7,117 @@
 let wasmModule = null;
 let isInitialized = false;
 
+// Cache configuration
+const CACHE_NAME = 'veloqr-wasm-cache-v1';
+const CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+let cacheEnabled = true;
+
+/**
+ * Check if Cache API is available in worker context
+ */
+function isCacheSupported() {
+  return typeof caches !== 'undefined' && 'open' in caches;
+}
+
+/**
+ * Load WASM files from cache
+ */
+async function loadFromCache(wasmUrl, wasmJsUrl) {
+  console.log('[Worker] Checking cache for WASM files', isCacheSupported());
+  if (!isCacheSupported() || !cacheEnabled) {
+    return null;
+  }
+
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const [wasmResponse, jsResponse] = await Promise.all([
+      cache.match(wasmUrl),
+      cache.match(wasmJsUrl)
+    ]);
+
+    if (!wasmResponse || !jsResponse) {
+      console.log('[Worker] Files not in cache');
+      return null;
+    }
+
+    // Check if cache is expired
+    const cachedAt = parseInt(wasmResponse.headers.get('x-cached-at') || '0', 10);
+    if (cachedAt && Date.now() - cachedAt > CACHE_MAX_AGE) {
+      console.log('[Worker] Cache expired');
+      return null;
+    }
+
+    const [wasmBytes, jsCode] = await Promise.all([
+      wasmResponse.arrayBuffer(),
+      jsResponse.text()
+    ]);
+
+    console.log('[Worker] Loaded from cache');
+    return { wasmBytes, jsCode };
+  } catch (error) {
+    console.error('[Worker] Cache load error:', error);
+    return null;
+  }
+}
+
+/**
+ * Cache WASM files
+ */
+async function cacheWasmFiles(wasmUrl, wasmJsUrl, wasmBytes, jsCode) {
+  if (!isCacheSupported() || !cacheEnabled) {
+    return false;
+  }
+
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const cachedAt = Date.now().toString();
+
+    const wasmResponse = new Response(wasmBytes, {
+      headers: {
+        'Content-Type': 'application/wasm',
+        'x-cached-at': cachedAt
+      }
+    });
+
+    const jsResponse = new Response(jsCode, {
+      headers: {
+        'Content-Type': 'application/javascript',
+        'x-cached-at': cachedAt
+      }
+    });
+
+    await Promise.all([
+      cache.put(wasmUrl, wasmResponse),
+      cache.put(wasmJsUrl, jsResponse)
+    ]);
+
+    console.log('[Worker] Files cached successfully');
+    return true;
+  } catch (error) {
+    console.error('[Worker] Cache store error:', error);
+    return false;
+  }
+}
+
+/**
+ * Fetch WASM files from network
+ */
+async function fetchWasmFiles(wasmUrl, wasmJsUrl) {
+  const wasmResponse = await fetch(wasmUrl);
+  if (!wasmResponse.ok) {
+    throw new Error(`Failed to load WASM: ${wasmResponse.status}`);
+  }
+  const wasmBytes = await wasmResponse.arrayBuffer();
+
+  const jsResponse = await fetch(wasmJsUrl);
+  if (!jsResponse.ok) {
+    throw new Error(`Failed to load WASM JS: ${jsResponse.status}`);
+  }
+  const jsCode = await jsResponse.text();
+
+  return { wasmBytes, jsCode };
+}
+
 // Load and initialize WASM module
 async function initializeWasm(wasmUrl, wasmJsUrl) {
   if (isInitialized && wasmModule) {
@@ -14,19 +125,23 @@ async function initializeWasm(wasmUrl, wasmJsUrl) {
   }
 
   try {
-    // Fetch WASM binary
-    const wasmResponse = await fetch(wasmUrl);
-    if (!wasmResponse.ok) {
-      throw new Error(`Failed to load WASM: ${wasmResponse.status}`);
-    }
-    const wasmBytes = await wasmResponse.arrayBuffer();
+    let wasmBytes, jsCode;
 
-    // Fetch JS wrapper
-    const jsResponse = await fetch(wasmJsUrl);
-    if (!jsResponse.ok) {
-      throw new Error(`Failed to load WASM JS: ${jsResponse.status}`);
+    // Try cache first
+    const cached = await loadFromCache(wasmUrl, wasmJsUrl);
+    if (cached) {
+      wasmBytes = cached.wasmBytes;
+      jsCode = cached.jsCode;
+    } else {
+      // Fetch from network
+      console.log('[Worker] Fetching from network');
+      const fetched = await fetchWasmFiles(wasmUrl, wasmJsUrl);
+      wasmBytes = fetched.wasmBytes;
+      jsCode = fetched.jsCode;
+
+      // Cache for future use
+      await cacheWasmFiles(wasmUrl, wasmJsUrl, wasmBytes, jsCode);
     }
-    const jsCode = await jsResponse.text();
 
     // Load WASM module using dynamic import
     const blob = new Blob([jsCode], { type: 'application/javascript' });
