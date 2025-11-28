@@ -4,16 +4,16 @@
 
 export function isSafari(): boolean {
   if (typeof window === 'undefined') return false;
-  
+
   const ua = navigator.userAgent.toLowerCase();
   const isSafariBrowser = ua.includes('safari') && !ua.includes('chrome') && !ua.includes('chromium');
-  
+
   return isSafariBrowser;
 }
 
 export function isIOS(): boolean {
   if (typeof window === 'undefined') return false;
-  
+
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
 }
 
@@ -21,8 +21,16 @@ export function isSafariOrIOS(): boolean {
   return isSafari() || isIOS();
 }
 
-export function isMobile() : boolean {
-  return /iPad|iPhone|iPod|Android/.test(navigator.userAgent)
+export function isAndroid(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  return /Android/.test(navigator.userAgent);
+}
+
+export function isMobile(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  return /Mobi|Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
 }
 
 export function getSafariOptimizedConstraints(baseConstraints: MediaTrackConstraints): MediaTrackConstraints {

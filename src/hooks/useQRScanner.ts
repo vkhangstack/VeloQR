@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice, CameraFacingMode, CameraFacing } from '../types';
 import { initWasm, decodeQRFromImageData } from '../utils/qr-processor';
-import { isSafariOrIOS, getSafariOptimizedConstraints } from '../utils/browser-detection';
+import { isSafariOrIOS, getSafariOptimizedConstraints, isMobile } from '../utils/browser-detection';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
 import { createCameraError } from '../constants/cameraErrors';
 import { triggerVibrate } from '../utils/vibrate';
@@ -37,6 +37,9 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   const frameBufferRef = useRef<FrameBuffer | null>(null);
   const canvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
   const lastScanTimeRef = useRef<number>(0);
+  const wasPausedByVisibilityRef = useRef(false);
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const tabIdRef = useRef<string>(`tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
   // Initialize frame buffer if frame merging is enabled
   useEffect(() => {
@@ -259,6 +262,14 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       setIsScanning(true);
       setError(null);
 
+      // Notify other tabs that this tab is using the camera
+      if (broadcastChannelRef.current) {
+        broadcastChannelRef.current.postMessage({
+          type: 'camera-start',
+          tabId: tabIdRef.current,
+        });
+      }
+
       // Start render loop with requestAnimationFrame
       animationFrameRef.current = requestAnimationFrame(renderLoop);
     } catch (err) {
@@ -324,6 +335,34 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     };
   }, [stopScanning]);
 
+  // Initialize BroadcastChannel for cross-tab communication
+  useEffect(() => {
+    // Check if BroadcastChannel is supported
+    if (typeof BroadcastChannel !== 'undefined') {
+      broadcastChannelRef.current = new BroadcastChannel('camera-scanner-channel');
+
+      // Listen for messages from other tabs
+      const handleMessage = (event: MessageEvent) => {
+        const { type, tabId } = event.data;
+
+        // If another tab is starting the camera, stop this tab's camera
+        if (type === 'camera-start' && tabId !== tabIdRef.current) {
+          stopScanning();
+        }
+      };
+
+      broadcastChannelRef.current.addEventListener('message', handleMessage);
+
+      return () => {
+        if (broadcastChannelRef.current) {
+          broadcastChannelRef.current.removeEventListener('message', handleMessage);
+          broadcastChannelRef.current.close();
+          broadcastChannelRef.current = null;
+        }
+      };
+    }
+  }, [isScanning, stopScanning]);
+
   // Start/restart render loop when scanning state changes
   useEffect(() => {
     if (isScanning && animationFrameRef.current === null) {
@@ -340,6 +379,87 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       }
     };
   }, [isScanning, renderLoop]);
+
+  // Handle tab visibility changes and window focus - stop camera when tab/window is inactive
+  useEffect(() => {
+    const isMobileDevice = isMobile();
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab is now hidden - force stop camera immediately
+        // Check streamRef directly instead of isScanning state for more reliability
+        if (streamRef.current) {
+          wasPausedByVisibilityRef.current = true;
+          stopScanning();
+        }
+      } else if (!document.hidden && wasPausedByVisibilityRef.current) {
+        // Tab is now visible again
+        // On desktop: auto-restart camera for better UX
+        // On mobile: don't auto-restart, let user manually restart for smoother experience
+        if (!isMobileDevice) {
+          wasPausedByVisibilityRef.current = false;
+          startScanning().catch((err) => {
+            console.error('Failed to restart camera:', err);
+            setError(err);
+            onError?.(err);
+          });
+        } else {
+          // Reset flag on mobile but don't auto-restart
+          wasPausedByVisibilityRef.current = false;
+        }
+      }
+    };
+
+    // Additional handlers for mobile - pagehide is more reliable on some mobile browsers
+    const handlePageHide = () => {
+      if (streamRef.current) {
+        wasPausedByVisibilityRef.current = true;
+        stopScanning();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+
+    // Only add blur/focus listeners on desktop for better UX
+    // Mobile browsers handle these events inconsistently
+    if (!isMobileDevice) {
+      const handleWindowBlur = () => {
+        if (isScanning) {
+          // Window lost focus (user switched to another app) - pause scanning
+          wasPausedByVisibilityRef.current = true;
+          stopScanning();
+        }
+      };
+
+      const handleWindowFocus = () => {
+        if (wasPausedByVisibilityRef.current) {
+          // Window gained focus and we paused due to blur - restart camera
+          wasPausedByVisibilityRef.current = false;
+          startScanning().catch((err) => {
+            console.error('Failed to restart camera:', err);
+            setError(err);
+            onError?.(err);
+          });
+        }
+      };
+
+      window.addEventListener('blur', handleWindowBlur);
+      window.addEventListener('focus', handleWindowFocus);
+
+      return () => {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        window.removeEventListener('pagehide', handlePageHide);
+        window.removeEventListener('blur', handleWindowBlur);
+        window.removeEventListener('focus', handleWindowFocus);
+      };
+    }
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+    };
+  }, [isScanning, startScanning, stopScanning, onError]);
 
   const getFlashSupport = useCallback(async (): Promise<boolean> => {
     if (!streamRef.current) {
