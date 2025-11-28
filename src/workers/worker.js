@@ -1,6 +1,6 @@
 /* VeloQR Processing Web Worker
  * author: vkhangstack
- * version: 1.2.2
+ * version: 1.2.3
  * license: MIT or Apache-2.0
  */
 
