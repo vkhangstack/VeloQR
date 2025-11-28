@@ -498,6 +498,22 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     }));
   }, []);
 
+  const decodeQRFromImageDataWrapper = useCallback(async (imageData: ImageData): Promise<QRCodeResult> => {
+    // Initialize WASM if not already done
+    if (!wasmInitializedRef.current) {
+      await initWasm();
+      wasmInitializedRef.current = true;
+    }
+
+    const results = await decodeQRFromImageData(imageData);
+    if (results.length > 0) {
+      return results[0];
+    } else {
+      throw new Error('No QR code found in the provided image data');
+    }
+  }, []);
+
+
   return {
     videoRef,
     canvasRef,
@@ -512,5 +528,6 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     getFlashSupport,
     turnOnFlash,
     turnOffFlash,
+    decodeQRFromImageData: decodeQRFromImageDataWrapper,
   };
 }

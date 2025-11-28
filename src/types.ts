@@ -147,6 +147,7 @@ export interface UseQRScannerReturn {
   getFlashSupport: () => Promise<boolean>;
   turnOnFlash: () => Promise<void>;
   turnOffFlash: () => Promise<void>;
+  decodeQRFromImageData: (imageData: ImageData) => Promise<QRCodeResult>;
 }
 
 export interface CameraDevice {
