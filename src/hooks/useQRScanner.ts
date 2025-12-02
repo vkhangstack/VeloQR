@@ -1,6 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice, CameraFacingMode, CameraFacing } from '../types';
-import { initWasm, decodeQRFromImageData } from '../utils/qr-processor';
+import { initWasm, decodeQRFromImageData, supportsOffscreenCanvas, processVideoFrame, updateWorkerConfig, clearFrameBuffer } from '../utils/qr-processor';
 import { isSafariOrIOS, getSafariOptimizedConstraints, isMobile } from '../utils/browser-detection';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
 import { createCameraError } from '../constants/cameraErrors';
@@ -40,6 +40,8 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   const wasPausedByVisibilityRef = useRef(false);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const tabIdRef = useRef<string>(`tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const useWorkerProcessingRef = useRef(false);
+  const offscreenCanvasInitializedRef = useRef(false);
 
   // Initialize frame buffer if frame merging is enabled
   useEffect(() => {
@@ -49,6 +51,22 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       frameBufferRef.current = null;
     }
   }, [enableFrameMerging, frameMergeCount]);
+
+  // Update worker config when parameters change
+  useEffect(() => {
+    if (useWorkerProcessingRef.current && offscreenCanvasInitializedRef.current) {
+      updateWorkerConfig({
+        resolutionScale,
+        crop,
+        sharpen,
+        enableFrameMerging,
+        frameMergeCount,
+        optimizeForSafari,
+      }).catch(err => {
+        console.warn('[useQRScanner] Failed to update worker config:', err);
+      });
+    }
+  }, [resolutionScale, crop, sharpen, enableFrameMerging, frameMergeCount, optimizeForSafari]);
 
   const scan = useCallback(async () => {
     // Skip if already scanning to prevent concurrent scans
@@ -77,67 +95,97 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     lastScanTimeRef.current = now;
 
     try {
-      // Apply resolution scaling
-      const scaledWidth = Math.floor(video.videoWidth * resolutionScale);
-      const scaledHeight = Math.floor(video.videoHeight * resolutionScale);
+      // Use worker-based processing if available and OffscreenCanvas is supported
+      if (useWorkerProcessingRef.current) {
+        // Create ImageBitmap from video (zero-copy operation)
+        const imageBitmap = await createImageBitmap(video);
 
-      // Set canvas dimensions only once or when needed
-      if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
-        canvas.width = scaledWidth;
-        canvas.height = scaledHeight;
-        // Reset cached context when dimensions change
-        canvasContextRef.current = null;
-      }
-
-      // Get or create canvas context (cached for performance)
-      if (!canvasContextRef.current) {
-        canvasContextRef.current = canvas.getContext('2d', {
-          alpha: false,
-          desynchronized: true,
-          willReadFrequently: true,
+        // Process in worker
+        const { results, canvasWidth, canvasHeight } = await processVideoFrame(imageBitmap, {
+          enableFrameMerging,
+          resolutionScale,
+          crop,
+          sharpen,
+          optimizeForSafari,
         });
-      }
 
-      const ctx = canvasContextRef.current;
-      if (!ctx) {
-        return;
-      }
-
-      // Apply image smoothing for better quality when scaling
-      if (resolutionScale !== 1) {
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-      }
-
-      // Draw video frame to canvas with scaling
-      ctx.drawImage(video, 0, 0, scaledWidth, scaledHeight);
-
-      // Get image data from canvas
-      let imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
-
-      // Apply Safari optimization if enabled
-      if (optimizeForSafari) {
-        imageData = optimizeFrameForSafari(imageData);
-      }
-
-      // Apply frame merging if enabled
-      if (enableFrameMerging && frameBufferRef.current) {
-        frameBufferRef.current.addFrame(imageData);
-        const mergedFrame = frameBufferRef.current.getMergedFrame();
-        if (mergedFrame) {
-          imageData = mergedFrame;
+        // Update canvas dimensions if needed (for overlay drawing)
+        if (canvas.width !== canvasWidth || canvas.height !== canvasHeight) {
+          canvas.width = canvasWidth;
+          canvas.height = canvasHeight;
         }
-      }
 
-      // Decode QR codes
-      const results = await decodeQRFromImageData(imageData, { crop, sharpen });
-
-      if (results.length > 0) {
-        if (vibrate) {
-          triggerVibrate();
+        if (results.length > 0) {
+          if (vibrate) {
+            triggerVibrate();
+          }
+          setLastResults(results);
+          onScan?.(results);
         }
-        setLastResults(results);
-        onScan?.(results);
+      } else {
+        // Fallback: Main thread processing
+        // Apply resolution scaling
+        const scaledWidth = Math.floor(video.videoWidth * resolutionScale);
+        const scaledHeight = Math.floor(video.videoHeight * resolutionScale);
+
+        // Set canvas dimensions only once or when needed
+        if (canvas.width !== scaledWidth || canvas.height !== scaledHeight) {
+          canvas.width = scaledWidth;
+          canvas.height = scaledHeight;
+          // Reset cached context when dimensions change
+          canvasContextRef.current = null;
+        }
+
+        // Get or create canvas context (cached for performance)
+        if (!canvasContextRef.current) {
+          canvasContextRef.current = canvas.getContext('2d', {
+            alpha: false,
+            desynchronized: true,
+            willReadFrequently: true,
+          });
+        }
+
+        const ctx = canvasContextRef.current;
+        if (!ctx) {
+          return;
+        }
+
+        // Apply image smoothing for better quality when scaling
+        if (resolutionScale !== 1) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+        }
+
+        // Draw video frame to canvas with scaling
+        ctx.drawImage(video, 0, 0, scaledWidth, scaledHeight);
+
+        // Get image data from canvas
+        let imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
+
+        // Apply Safari optimization if enabled
+        if (optimizeForSafari) {
+          imageData = optimizeFrameForSafari(imageData);
+        }
+
+        // Apply frame merging if enabled
+        if (enableFrameMerging && frameBufferRef.current) {
+          frameBufferRef.current.addFrame(imageData);
+          const mergedFrame = frameBufferRef.current.getMergedFrame();
+          if (mergedFrame) {
+            imageData = mergedFrame;
+          }
+        }
+
+        // Decode QR codes
+        const results = await decodeQRFromImageData(imageData, { crop, sharpen });
+
+        if (results.length > 0) {
+          if (vibrate) {
+            triggerVibrate();
+          }
+          setLastResults(results);
+          onScan?.(results);
+        }
       }
     } catch (err) {
       console.error('Scan error:', err);
@@ -147,7 +195,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     } finally {
       isScanningRef.current = false;
     }
-  }, [isScanning, onScan, onError, enableFrameMerging, optimizeForSafari, resolutionScale, crop, sharpen, scanDelay]);
+  }, [isScanning, onScan, onError, enableFrameMerging, optimizeForSafari, resolutionScale, crop, sharpen, scanDelay, vibrate]);
 
   // Render loop using requestAnimationFrame for smooth canvas updates
   const renderLoop = useCallback(() => {
@@ -175,6 +223,15 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       if (!wasmInitializedRef.current) {
         await initWasm();
         wasmInitializedRef.current = true;
+
+        // Check if OffscreenCanvas is supported and enable worker processing
+        if (supportsOffscreenCanvas()) {
+          useWorkerProcessingRef.current = true;
+          console.log('[useQRScanner] OffscreenCanvas supported - using worker processing');
+        } else {
+          useWorkerProcessingRef.current = false;
+          console.log('[useQRScanner] OffscreenCanvas not supported - using main thread processing');
+        }
       }
 
       const facingMode = getFacingMode(cameraFacing || preferredCamera);
@@ -259,6 +316,33 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         }
       }
 
+      // Initialize OffscreenCanvas in worker if supported and not already initialized
+      if (useWorkerProcessingRef.current && !offscreenCanvasInitializedRef.current && videoRef.current) {
+        try {
+          // Send initial dimensions and config to worker to create its own OffscreenCanvas
+          const video = videoRef.current;
+          const initialWidth = video.videoWidth;
+          const initialHeight = video.videoHeight;
+
+          await updateWorkerConfig({
+            createCanvas: true,
+            canvasWidth: initialWidth,
+            canvasHeight: initialHeight,
+            enableFrameMerging,
+            frameMergeCount,
+            resolutionScale,
+            crop,
+            sharpen,
+            optimizeForSafari,
+          });
+          offscreenCanvasInitializedRef.current = true;
+          console.log('[useQRScanner] Worker canvas initialized');
+        } catch (err) {
+          console.warn('[useQRScanner] Failed to initialize worker canvas, falling back to main thread:', err);
+          useWorkerProcessingRef.current = false;
+        }
+      }
+
       setIsScanning(true);
       setError(null);
 
@@ -279,7 +363,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       onError?.(cameraError);
       throw cameraError;
     }
-  }, [renderLoop, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode]);
+  }, [renderLoop, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode, enableFrameMerging, frameMergeCount, resolutionScale, crop, sharpen]);
 
   const stopScanning = useCallback(() => {
     setIsScanning(false);
@@ -306,6 +390,13 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       frameBufferRef.current.clear();
     }
 
+    // Clear worker frame buffer if using worker processing
+    if (useWorkerProcessingRef.current && offscreenCanvasInitializedRef.current) {
+      clearFrameBuffer().catch(err => {
+        console.warn('[useQRScanner] Failed to clear worker frame buffer:', err);
+      });
+    }
+
     // Clear canvas context cache
     canvasContextRef.current = null;
 
@@ -318,6 +409,9 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
 
     // Stop current scanning
     stopScanning();
+
+    // Reset OffscreenCanvas state so it can be reinitialized
+    offscreenCanvasInitializedRef.current = false;
 
     // Wait a bit for cleanup
     await new Promise(resolve => setTimeout(resolve, 300));

@@ -9,11 +9,15 @@ export class WorkerHelper {
     resolve: (value: any) => void;
     reject: (error: Error) => void;
   }>();
+  private supportsOffscreenCanvas = false;
 
   async init(workerUrl: string, wasmUrl: string, wasmJsUrl: string): Promise<void> {
     if (this.worker) {
       return;
     }
+
+    // Check OffscreenCanvas support
+    this.supportsOffscreenCanvas = typeof OffscreenCanvas !== 'undefined';
 
     return new Promise(async (resolve, reject) => {
       try {
@@ -39,7 +43,7 @@ export class WorkerHelper {
         this.worker = new Worker(workerBlobUrl);
 
         this.worker.onmessage = (e) => {
-          const { type, id, success, results, error } = e.data;
+          const { type, id, success, results, error, canvasWidth, canvasHeight } = e.data;
 
           const pending = this.pendingMessages.get(id);
           if (!pending) return;
@@ -52,8 +56,22 @@ export class WorkerHelper {
             } else {
               pending.reject(new Error(error || 'Init failed'));
             }
+          } else if (type === 'update-config-response') {
+            if (success) {
+              pending.resolve(undefined);
+            } else {
+              pending.reject(new Error(error || 'Config update failed'));
+            }
+          } else if (type === 'process-frame-response') {
+            if (success) {
+              pending.resolve({ results, canvasWidth, canvasHeight });
+            } else {
+              pending.reject(new Error(error || 'Frame processing failed'));
+            }
           } else if (type === 'decode-response') {
             pending.resolve(results);
+          } else if (type === 'clear-buffer-response') {
+            pending.resolve(undefined);
           } else if (type.endsWith('-error')) {
             pending.reject(new Error(error));
           }
@@ -88,6 +106,10 @@ export class WorkerHelper {
     });
   }
 
+  getSupportsOffscreenCanvas(): boolean {
+    return this.supportsOffscreenCanvas;
+  }
+
   async decode(imageData: ImageData, options: any): Promise<QRCodeResult[]> {
     if (!this.worker) {
       throw new Error('Worker not initialized');
@@ -111,6 +133,81 @@ export class WorkerHelper {
           reject(new Error('Decode timeout'));
         }
       }, 5000);
+    });
+  }
+
+  async updateConfig(config: any): Promise<void> {
+    if (!this.worker) {
+      throw new Error('Worker not initialized');
+    }
+
+    return new Promise((resolve, reject) => {
+      const id = this.messageId++;
+      this.pendingMessages.set(id, { resolve, reject });
+
+      this.worker!.postMessage({
+        type: 'update-config',
+        id,
+        payload: config
+      });
+
+      // Timeout after 2 seconds
+      setTimeout(() => {
+        if (this.pendingMessages.has(id)) {
+          this.pendingMessages.delete(id);
+          reject(new Error('Config update timeout'));
+        }
+      }, 2000);
+    });
+  }
+
+  async processFrame(imageBitmap: ImageBitmap, config: any): Promise<{ results: QRCodeResult[], canvasWidth: number, canvasHeight: number }> {
+    if (!this.worker) {
+      throw new Error('Worker not initialized');
+    }
+
+    return new Promise((resolve, reject) => {
+      const id = this.messageId++;
+      this.pendingMessages.set(id, { resolve, reject });
+
+      this.worker!.postMessage({
+        type: 'process-frame',
+        id,
+        payload: { imageBitmap, config }
+      }, [imageBitmap]);
+
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        if (this.pendingMessages.has(id)) {
+          this.pendingMessages.delete(id);
+          reject(new Error('Frame processing timeout'));
+        }
+      }, 5000);
+    });
+  }
+
+  async clearBuffer(): Promise<void> {
+    if (!this.worker) {
+      throw new Error('Worker not initialized');
+    }
+
+    return new Promise((resolve, reject) => {
+      const id = this.messageId++;
+      this.pendingMessages.set(id, { resolve, reject });
+
+      this.worker!.postMessage({
+        type: 'clear-buffer',
+        id,
+        payload: {}
+      });
+
+      // Timeout after 2 seconds
+      setTimeout(() => {
+        if (this.pendingMessages.has(id)) {
+          this.pendingMessages.delete(id);
+          reject(new Error('Clear buffer timeout'));
+        }
+      }, 2000);
     });
   }
 

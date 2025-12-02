@@ -6,6 +6,14 @@
 
 let wasmModule = null;
 let isInitialized = false;
+let offscreenCanvas = null;
+let offscreenContext = null;
+let frameBuffer = [];
+let maxFrames = 3;
+let currentResolutionScale = 1;
+let currentCrop = null;
+let currentSharpen = null;
+let optimizeForSafari = false;
 
 // Load and initialize WASM module
 async function initializeWasm(wasmUrl, wasmJsUrl) {
@@ -320,6 +328,219 @@ function extractMRZ(textData) {
   }
 }
 
+// Create OffscreenCanvas in worker
+function createOffscreenCanvas(width, height) {
+  try {
+    if (typeof OffscreenCanvas === 'undefined') {
+      throw new Error('OffscreenCanvas not supported');
+    }
+
+    offscreenCanvas = new OffscreenCanvas(width, height);
+    offscreenContext = offscreenCanvas.getContext('2d', {
+      alpha: false,
+      desynchronized: true,
+      willReadFrequently: true,
+    });
+
+    console.log('[Worker] OffscreenCanvas created:', width, 'x', height);
+    return { success: true };
+  } catch (error) {
+    console.error('[Worker] OffscreenCanvas creation error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Update canvas configuration
+function updateCanvasConfig(config) {
+  // Create canvas if requested
+  if (config.createCanvas && config.canvasWidth && config.canvasHeight) {
+    const result = createOffscreenCanvas(config.canvasWidth, config.canvasHeight);
+    if (!result.success) {
+      throw new Error(result.error);
+    }
+  }
+
+  // Update configuration
+  if (config.resolutionScale !== undefined) {
+    currentResolutionScale = config.resolutionScale;
+  }
+  if (config.crop !== undefined) {
+    currentCrop = config.crop;
+  }
+  if (config.sharpen !== undefined) {
+    currentSharpen = config.sharpen;
+  }
+  if (config.enableFrameMerging !== undefined) {
+    if (config.enableFrameMerging && config.frameMergeCount) {
+      maxFrames = config.frameMergeCount;
+    } else if (!config.enableFrameMerging) {
+      frameBuffer = [];
+    }
+  }
+  if (config.optimizeForSafari !== undefined) {
+    optimizeForSafari = config.optimizeForSafari;
+  }
+  console.log('[Worker] Canvas config updated:', config);
+}
+
+// Add frame to buffer for merging
+function addFrameToBuffer(imageData) {
+  frameBuffer.push(imageData);
+  if (frameBuffer.length > maxFrames) {
+    frameBuffer.shift();
+  }
+}
+
+// Merge frames in buffer
+function getMergedFrame() {
+  if (frameBuffer.length === 0) {
+    return null;
+  }
+
+  if (frameBuffer.length === 1) {
+    return frameBuffer[0];
+  }
+
+  const { width, height } = frameBuffer[0];
+  const merged = new ImageData(width, height);
+  const frameCount = frameBuffer.length;
+
+  // Average pixel values across all frames
+  for (let i = 0; i < merged.data.length; i++) {
+    let sum = 0;
+    for (let f = 0; f < frameCount; f++) {
+      sum += frameBuffer[f].data[i];
+    }
+    merged.data[i] = Math.round(sum / frameCount);
+  }
+
+  return merged;
+}
+
+// Safari-specific optimization
+function optimizeFrameForSafari(imageData) {
+  const { width, height, data } = imageData;
+
+  // Downscale to 0.75
+  const scale = 0.75;
+  const newWidth = Math.floor(width * scale);
+  const newHeight = Math.floor(height * scale);
+
+  // Use OffscreenCanvas for scaling if available
+  const tempCanvas = new OffscreenCanvas(newWidth, newHeight);
+  const tempCtx = tempCanvas.getContext('2d');
+
+  if (!tempCtx) {
+    return imageData;
+  }
+
+  // Create temporary canvas with original size
+  const srcCanvas = new OffscreenCanvas(width, height);
+  const srcCtx = srcCanvas.getContext('2d');
+
+  if (!srcCtx) {
+    return imageData;
+  }
+
+  srcCtx.putImageData(imageData, 0, 0);
+
+  // Draw scaled down with high quality
+  tempCtx.imageSmoothingEnabled = true;
+  tempCtx.imageSmoothingQuality = 'high';
+  tempCtx.drawImage(srcCanvas, 0, 0, width, height, 0, 0, newWidth, newHeight);
+
+  const downscaled = tempCtx.getImageData(0, 0, newWidth, newHeight);
+
+  // Enhance contrast
+  const enhanced = new ImageData(newWidth, newHeight);
+  const enhancedData = enhanced.data;
+  const srcData = downscaled.data;
+
+  const contrastFactor = 1.5;
+  const intercept = 128 * (1 - contrastFactor);
+
+  for (let i = 0; i < srcData.length; i += 4) {
+    enhancedData[i] = Math.max(0, Math.min(255, srcData[i] * contrastFactor + intercept));
+    enhancedData[i + 1] = Math.max(0, Math.min(255, srcData[i + 1] * contrastFactor + intercept));
+    enhancedData[i + 2] = Math.max(0, Math.min(255, srcData[i + 2] * contrastFactor + intercept));
+    enhancedData[i + 3] = srcData[i + 3];
+  }
+
+  return enhanced;
+}
+
+// Process video frame with ImageBitmap
+function processVideoFrame(imageBitmap, config = {}) {
+  if (!offscreenCanvas || !offscreenContext) {
+    throw new Error('OffscreenCanvas not initialized');
+  }
+
+  const enableFrameMerging = config.enableFrameMerging || false;
+  const resolutionScale = config.resolutionScale !== undefined ? config.resolutionScale : currentResolutionScale;
+  const crop = config.crop !== undefined ? config.crop : currentCrop;
+  const sharpen = config.sharpen !== undefined ? config.sharpen : currentSharpen;
+  const safariOptimize = config.optimizeForSafari !== undefined ? config.optimizeForSafari : optimizeForSafari;
+
+  try {
+    // Calculate scaled dimensions
+    const scaledWidth = Math.floor(imageBitmap.width * resolutionScale);
+    const scaledHeight = Math.floor(imageBitmap.height * resolutionScale);
+
+    // Update canvas size if needed
+    if (offscreenCanvas.width !== scaledWidth || offscreenCanvas.height !== scaledHeight) {
+      offscreenCanvas.width = scaledWidth;
+      offscreenCanvas.height = scaledHeight;
+    }
+
+    // Apply image smoothing for better quality when scaling
+    if (resolutionScale !== 1) {
+      offscreenContext.imageSmoothingEnabled = true;
+      offscreenContext.imageSmoothingQuality = 'high';
+    }
+
+    // Draw imageBitmap to canvas with scaling
+    offscreenContext.drawImage(imageBitmap, 0, 0, scaledWidth, scaledHeight);
+
+    // Get image data
+    let imageData = offscreenContext.getImageData(0, 0, scaledWidth, scaledHeight);
+
+    // Apply Safari optimization if enabled
+    if (safariOptimize) {
+      imageData = optimizeFrameForSafari(imageData);
+    }
+
+    // Apply frame merging if enabled
+    if (enableFrameMerging) {
+      addFrameToBuffer(imageData);
+      const mergedFrame = getMergedFrame();
+      if (mergedFrame) {
+        imageData = mergedFrame;
+      }
+    }
+
+    // Decode QR codes with crop and sharpen options
+    const results = decodeQRCode(imageData, {
+      useSlidingWindow: false, // Direct decode for performance
+      crop,
+      sharpen,
+    });
+
+    return {
+      success: true,
+      results,
+      canvasWidth: scaledWidth,
+      canvasHeight: scaledHeight,
+    };
+  } catch (error) {
+    console.error('[Worker] Frame processing error:', error);
+    return {
+      success: false,
+      error: error.message,
+      results: [],
+    };
+  }
+}
+
 // Message handler
 self.onmessage = async function (e) {
   const { type, id, payload } = e.data;
@@ -337,6 +558,31 @@ self.onmessage = async function (e) {
         break;
       }
 
+      case 'update-config': {
+        updateCanvasConfig(payload);
+        self.postMessage({
+          type: 'update-config-response',
+          id,
+          success: true,
+        });
+        break;
+      }
+
+      case 'process-frame': {
+        const { imageBitmap, config } = payload;
+        const result = processVideoFrame(imageBitmap, config);
+        self.postMessage({
+          type: 'process-frame-response',
+          id,
+          success: result.success,
+          results: result.results,
+          canvasWidth: result.canvasWidth,
+          canvasHeight: result.canvasHeight,
+          error: result.error,
+        });
+        break;
+      }
+
       case 'decode': {
         const { imageData, ...options } = payload;
         const results = decodeQRCode(imageData, options);
@@ -348,9 +594,22 @@ self.onmessage = async function (e) {
         break;
       }
 
+      case 'clear-buffer': {
+        frameBuffer = [];
+        self.postMessage({
+          type: 'clear-buffer-response',
+          id,
+          success: true,
+        });
+        break;
+      }
+
       case 'terminate': {
         wasmModule = null;
         isInitialized = false;
+        offscreenCanvas = null;
+        offscreenContext = null;
+        frameBuffer = [];
         self.close();
         break;
       }

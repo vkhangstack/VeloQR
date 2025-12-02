@@ -213,6 +213,56 @@ export async function decodeQRFromImageData(
 }
 
 /**
+ * Get WorkerHelper instance
+ */
+export function getWorkerHelper(): WorkerHelper | null {
+  return workerHelper;
+}
+
+/**
+ * Check if worker supports OffscreenCanvas
+ */
+export function supportsOffscreenCanvas(): boolean {
+  if (!workerHelper) {
+    return false;
+  }
+  return workerHelper.getSupportsOffscreenCanvas();
+}
+
+/**
+ * Update worker configuration
+ */
+export async function updateWorkerConfig(config: any): Promise<void> {
+  if (!workerHelper) {
+    throw new Error('Worker not initialized');
+  }
+  return workerHelper.updateConfig(config);
+}
+
+/**
+ * Process video frame in worker
+ */
+export async function processVideoFrame(imageBitmap: ImageBitmap, config: any): Promise<{ results: QRCodeResult[], canvasWidth: number, canvasHeight: number }> {
+  if (!workerHelper) {
+    await initWasm();
+  }
+  if (!workerHelper) {
+    throw new Error('Worker not initialized');
+  }
+  return workerHelper.processFrame(imageBitmap, config);
+}
+
+/**
+ * Clear frame buffer in worker
+ */
+export async function clearFrameBuffer(): Promise<void> {
+  if (!workerHelper) {
+    throw new Error('Worker not initialized');
+  }
+  return workerHelper.clearBuffer();
+}
+
+/**
  * Cleanup resources
  */
 export function cleanup(): void {
