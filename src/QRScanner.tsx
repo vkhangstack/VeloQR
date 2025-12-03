@@ -253,20 +253,23 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     };
   }, [isScanning, videoReady]);
 
-  // Draw overlay when results change
+  // Draw overlay when results change and auto-hide after detectionDuration
   useEffect(() => {
     if (canvasRef.current && lastResults.length > 0) {
       drawQROverlay(canvasRef.current, lastResults, highlightColor, highlightBorderWidth);
-    }
-  }, [lastResults, highlightColor, highlightBorderWidth]);
-
-  // Show detection animation when QR code is found
-  useEffect(() => {
-    if (lastResults.length > 0) {
       setShowDetection(true);
+
       const timer = setTimeout(() => {
         setShowDetection(false);
-      }, config.detectionDuration);
+        // Clear the canvas overlay
+        if (canvasRef.current) {
+          const ctx = canvasRef.current.getContext('2d');
+          if (ctx) {
+            ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          }
+        }
+      }, 500);
+
       return () => clearTimeout(timer);
     }
   }, [lastResults, config.detectionDuration]);
