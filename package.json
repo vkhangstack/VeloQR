@@ -1,6 +1,6 @@
 {
   "name": "@vkhangstack/veloqr",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "type": "module",
   "description": "A high-performance React QR code and MRZ (passport/ID card) scanner library using WebAssembly, Rust",
   "main": "release/index.js",
