@@ -6,10 +6,6 @@ A high-performance React library for scanning QR codes using WebAssembly and Rus
 
 - **High Performance**: Powered by WebAssembly compiled from Rust for near-native speed
 - **QR Code Scanning**: Real-time QR code detection from webcam or device camera
-- **MRZ Reading**: NEW! Passport and ID card MRZ (Machine Readable Zone) scanning support
-  - TD1 (ID cards), TD2 (travel documents), and TD3 (passports)
-  - Automatic document type detection
-  - Full data extraction (name, DOB, nationality, document number, etc.)
 - **Live Camera Scanning**: Real-time detection from webcam or device camera
 - **Image File Scanning**: Scan QR codes and MRZ from uploaded image files
 - **Multiple QR Detection**: Detect and decode multiple QR codes in a single frame
@@ -17,6 +13,10 @@ A high-performance React library for scanning QR codes using WebAssembly and Rus
 - **Custom Styling**: Fully customizable UI with styling props and overlay options
 - **TypeScript Support**: Full TypeScript definitions included
 - **Lightweight**: Optimized WASM binary for minimal bundle size
+- **MRZ Reading**: EXPECTED! Passport and ID card MRZ (Machine Readable Zone) scanning support
+  - TD1 (ID cards), TD2 (travel documents), and TD3 (passports)
+  - Automatic document type detection
+  - Full data extraction (name, DOB, nationality, document number, etc.)
 
 ## Prerequisites
 
@@ -85,7 +85,7 @@ npm run build
 
 ```tsx
 import React from 'react';
-import { QRScanner, QRCodeResult } from 'veloqr';
+import { QRScanner, QRCodeResult } from '@vkhangstack/veloqr';
 
 function App() {
   const handleScan = (results: QRCodeResult[]) => {
@@ -119,7 +119,7 @@ export default App;
 
 ```tsx
 import React from 'react';
-import { QRImageScanner, QRCodeResult } from 'veloqr';
+import { QRImageScanner, QRCodeResult } from '@vkhangstack/veloqr';
 
 function App() {
   const handleScan = (results: QRCodeResult[]) => {
@@ -643,9 +643,9 @@ Configure the WASM loader with custom URLs.
 
 **Parameters:**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `config.wasmUrl` | `string` | Full URL or path to the `.wasm` file |
+| Parameter          | Type                | Description                                |
+| ------------------ | ------------------- | ------------------------------------------ |
+| `config.wasmUrl`   | `string`            | Full URL or path to the `.wasm` file       |
 | `config.wasmJsUrl` | `string` (optional) | Full URL or path to the `.js` wrapper file |
 
 **Example:**
@@ -681,36 +681,36 @@ resetWasm();
 
 Props:
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `onScan` | `(results: QRCodeResult[]) => void` | - | Callback when QR codes are detected |
-| `onError` | `(error: Error) => void` | - | Callback when an error occurs |
-| `scanDelay` | `number` | `300` | Delay between scans in milliseconds |
-| `videoConstraints` | `MediaTrackConstraints` | - | Constraints for video stream |
-| `className` | `string` | `''` | CSS class name |
-| `style` | `React.CSSProperties` | `{}` | Inline styles |
-| `showOverlay` | `boolean` | `true` | Show overlay on video |
-| `overlayColor` | `string` | `'rgba(0, 0, 0, 0.5)'` | Overlay background color |
-| `overlayOpacity` | `number` | `0.5` | Overlay opacity |
-| `highlightColor` | `string` | `'#00ff00'` | Color for highlighting detected QR codes |
-| `highlightBorderWidth` | `number` | `3` | Width of highlight border |
-| `animationText` | `AnimationText` | `{}` | Custom text for animations (see below) |
-| `animationConfig` | `AnimationConfig` | `{}` | Animation configuration (see below) |
+| Prop                   | Type                                | Default                | Description                              |
+| ---------------------- | ----------------------------------- | ---------------------- | ---------------------------------------- |
+| `onScan`               | `(results: QRCodeResult[]) => void` | -                      | Callback when QR codes are detected      |
+| `onError`              | `(error: Error) => void`            | -                      | Callback when an error occurs            |
+| `scanDelay`            | `number`                            | `300`                  | Delay between scans in milliseconds      |
+| `videoConstraints`     | `MediaTrackConstraints`             | -                      | Constraints for video stream             |
+| `className`            | `string`                            | `''`                   | CSS class name                           |
+| `style`                | `React.CSSProperties`               | `{}`                   | Inline styles                            |
+| `showOverlay`          | `boolean`                           | `true`                 | Show overlay on video                    |
+| `overlayColor`         | `string`                            | `'rgba(0, 0, 0, 0.5)'` | Overlay background color                 |
+| `overlayOpacity`       | `number`                            | `0.5`                  | Overlay opacity                          |
+| `highlightColor`       | `string`                            | `'#00ff00'`            | Color for highlighting detected QR codes |
+| `highlightBorderWidth` | `number`                            | `3`                    | Width of highlight border                |
+| `animationText`        | `AnimationText`                     | `{}`                   | Custom text for animations (see below)   |
+| `animationConfig`      | `AnimationConfig`                   | `{}`                   | Animation configuration (see below)      |
 
 ### `<QRImageScanner />`
 
 Props:
 
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `onScan` | `(results: QRCodeResult[]) => void` | - | Callback when QR codes are detected |
-| `onError` | `(error: Error) => void` | - | Callback when an error occurs |
-| `className` | `string` | `''` | CSS class name |
-| `style` | `React.CSSProperties` | `{}` | Inline styles |
-| `showPreview` | `boolean` | `true` | Show image preview |
-| `acceptedFormats` | `string[]` | `['image/png', 'image/jpeg', 'image/jpg', 'image/webp']` | Accepted image formats |
-| `animationText` | `AnimationText` | `{}` | Custom text for animations (see below) |
-| `animationConfig` | `AnimationConfig` | `{}` | Animation configuration (see below) |
+| Prop              | Type                                | Default                                                  | Description                            |
+| ----------------- | ----------------------------------- | -------------------------------------------------------- | -------------------------------------- |
+| `onScan`          | `(results: QRCodeResult[]) => void` | -                                                        | Callback when QR codes are detected    |
+| `onError`         | `(error: Error) => void`            | -                                                        | Callback when an error occurs          |
+| `className`       | `string`                            | `''`                                                     | CSS class name                         |
+| `style`           | `React.CSSProperties`               | `{}`                                                     | Inline styles                          |
+| `showPreview`     | `boolean`                           | `true`                                                   | Show image preview                     |
+| `acceptedFormats` | `string[]`                          | `['image/png', 'image/jpeg', 'image/jpg', 'image/webp']` | Accepted image formats                 |
+| `animationText`   | `AnimationText`                     | `{}`                                                     | Custom text for animations (see below) |
+| `animationConfig` | `AnimationConfig`                   | `{}`                                                     | Animation configuration (see below)    |
 
 ### `AnimationText`
 
@@ -745,23 +745,23 @@ interface AnimationConfig {
 
 Options:
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `scanDelay` | `number` | `300` | Delay between scans in milliseconds |
-| `onScan` | `(results: QRCodeResult[]) => void` | - | Callback when QR codes are detected |
-| `onError` | `(error: Error) => void` | - | Callback when an error occurs |
+| Option      | Type                                | Default | Description                         |
+| ----------- | ----------------------------------- | ------- | ----------------------------------- |
+| `scanDelay` | `number`                            | `300`   | Delay between scans in milliseconds |
+| `onScan`    | `(results: QRCodeResult[]) => void` | -       | Callback when QR codes are detected |
+| `onError`   | `(error: Error) => void`            | -       | Callback when an error occurs       |
 
 Returns:
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `videoRef` | `React.RefObject<HTMLVideoElement>` | Ref for video element |
-| `canvasRef` | `React.RefObject<HTMLCanvasElement>` | Ref for canvas element |
-| `isScanning` | `boolean` | Whether scanning is active |
-| `startScanning` | `() => Promise<void>` | Start scanning |
-| `stopScanning` | `() => void` | Stop scanning |
-| `lastResults` | `QRCodeResult[]` | Last detected QR codes |
-| `error` | `Error \| null` | Last error, if any |
+| Property        | Type                                 | Description                |
+| --------------- | ------------------------------------ | -------------------------- |
+| `videoRef`      | `React.RefObject<HTMLVideoElement>`  | Ref for video element      |
+| `canvasRef`     | `React.RefObject<HTMLCanvasElement>` | Ref for canvas element     |
+| `isScanning`    | `boolean`                            | Whether scanning is active |
+| `startScanning` | `() => Promise<void>`                | Start scanning             |
+| `stopScanning`  | `() => void`                         | Stop scanning              |
+| `lastResults`   | `QRCodeResult[]`                     | Last detected QR codes     |
+| `error`         | `Error \| null`                      | Last error, if any         |
 
 ### `QRCodeResult`
 
@@ -810,7 +810,7 @@ The WASM module is optimized for:
 
 ## License
 
-MIT
+License. See `LICENSE` file for details.
 
 ## Contributing
 
@@ -915,3 +915,7 @@ Built with:
 - [rqrr](https://github.com/WanzenBug/rqrr) - Rust QR code detection library
 - [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen) - Rust/WebAssembly interop
 - React - UI framework
+
+## Donations
+If you find this library useful, consider supporting its development:
+- Buy me a coffee: [https://www.buymeacoffee.com/vkhangstack](https://www.buymeacoffee.com/vkhangstack)
