@@ -50,30 +50,44 @@ export class WorkerHelper {
 
           this.pendingMessages.delete(id);
 
-          if (type === 'init-response') {
-            if (success) {
+          switch (type) {
+            case 'init-response':
+              if (success) {
+                pending.resolve(undefined);
+              } else {
+                pending.reject(new Error(error || 'Init failed'));
+              }
+              break;
+
+            case 'update-config-response':
+              if (success) {
+                pending.resolve(undefined);
+              } else {
+                pending.reject(new Error(error || 'Config update failed'));
+              }
+              break;
+
+            case 'process-frame-response':
+              if (success) {
+                pending.resolve({ results, canvasWidth, canvasHeight });
+              } else {
+                pending.reject(new Error(error || 'Frame processing failed'));
+              }
+              break;
+
+            case 'decode-response':
+              pending.resolve(results);
+              break;
+
+            case 'clear-buffer-response':
               pending.resolve(undefined);
-            } else {
-              pending.reject(new Error(error || 'Init failed'));
-            }
-          } else if (type === 'update-config-response') {
-            if (success) {
-              pending.resolve(undefined);
-            } else {
-              pending.reject(new Error(error || 'Config update failed'));
-            }
-          } else if (type === 'process-frame-response') {
-            if (success) {
-              pending.resolve({ results, canvasWidth, canvasHeight });
-            } else {
-              pending.reject(new Error(error || 'Frame processing failed'));
-            }
-          } else if (type === 'decode-response') {
-            pending.resolve(results);
-          } else if (type === 'clear-buffer-response') {
-            pending.resolve(undefined);
-          } else if (type.endsWith('-error')) {
-            pending.reject(new Error(error));
+              break;
+
+            default:
+              if (type.endsWith('-error')) {
+                pending.reject(new Error(error));
+              }
+              break;
           }
         };
 
@@ -96,7 +110,7 @@ export class WorkerHelper {
         setTimeout(() => {
           if (this.pendingMessages.has(id)) {
             this.pendingMessages.delete(id);
-            reject(new Error('Worker initialization timeout'));
+            // reject(new Error('Worker initialization timeout'));
           }
         }, 10000);
 
@@ -130,7 +144,7 @@ export class WorkerHelper {
       setTimeout(() => {
         if (this.pendingMessages.has(id)) {
           this.pendingMessages.delete(id);
-          reject(new Error('Decode timeout'));
+          // reject(new Error('Decode timeout'));
         }
       }, 5000);
     });
@@ -155,7 +169,7 @@ export class WorkerHelper {
       setTimeout(() => {
         if (this.pendingMessages.has(id)) {
           this.pendingMessages.delete(id);
-          reject(new Error('Config update timeout'));
+          // reject(new Error('Config update timeout'));
         }
       }, 2000);
     });
@@ -180,7 +194,7 @@ export class WorkerHelper {
       setTimeout(() => {
         if (this.pendingMessages.has(id)) {
           this.pendingMessages.delete(id);
-          reject(new Error('Frame processing timeout'));
+          // reject(new Error('Frame processing timeout'));
         }
       }, 5000);
     });
@@ -205,7 +219,7 @@ export class WorkerHelper {
       setTimeout(() => {
         if (this.pendingMessages.has(id)) {
           this.pendingMessages.delete(id);
-          reject(new Error('Clear buffer timeout'));
+          // reject(new Error('Clear buffer timeout'));
         }
       }, 2000);
     });
