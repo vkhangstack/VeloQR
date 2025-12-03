@@ -417,6 +417,129 @@ function getMergedFrame() {
   return merged;
 }
 
+// Bilinear upscale for small QR codes (zoom in)
+function upscaleImage(imageData, scaleFactor) {
+  const { width, height } = imageData;
+  const newWidth = Math.floor(width * scaleFactor);
+  const newHeight = Math.floor(height * scaleFactor);
+
+  const srcCanvas = new OffscreenCanvas(width, height);
+  const srcCtx = srcCanvas.getContext('2d');
+  if (!srcCtx) return imageData;
+
+  srcCtx.putImageData(imageData, 0, 0);
+
+  const dstCanvas = new OffscreenCanvas(newWidth, newHeight);
+  const dstCtx = dstCanvas.getContext('2d');
+  if (!dstCtx) return imageData;
+
+  // Use bicubic-like interpolation for better quality
+  dstCtx.imageSmoothingEnabled = true;
+  dstCtx.imageSmoothingQuality = 'high';
+  dstCtx.drawImage(srcCanvas, 0, 0, width, height, 0, 0, newWidth, newHeight);
+
+  return dstCtx.getImageData(0, 0, newWidth, newHeight);
+}
+
+// Extract center crop for focusing on small QR
+function extractCenterCrop(imageData, cropRatio = 0.6) {
+  const { width, height, data } = imageData;
+  const cropWidth = Math.floor(width * cropRatio);
+  const cropHeight = Math.floor(height * cropRatio);
+  const offsetX = Math.floor((width - cropWidth) / 2);
+  const offsetY = Math.floor((height - cropHeight) / 2);
+
+  const cropData = new Uint8ClampedArray(cropWidth * cropHeight * 4);
+
+  for (let y = 0; y < cropHeight; y++) {
+    for (let x = 0; x < cropWidth; x++) {
+      const srcIdx = ((y + offsetY) * width + (x + offsetX)) * 4;
+      const dstIdx = (y * cropWidth + x) * 4;
+      cropData[dstIdx] = data[srcIdx];
+      cropData[dstIdx + 1] = data[srcIdx + 1];
+      cropData[dstIdx + 2] = data[srcIdx + 2];
+      cropData[dstIdx + 3] = data[srcIdx + 3];
+    }
+  }
+
+  return {
+    imageData: new ImageData(cropData, cropWidth, cropHeight),
+    offsetX,
+    offsetY,
+  };
+}
+
+// Unsharp mask sharpening for better edge detection
+function sharpenForQR(imageData, amount = 1.5) {
+  const { width, height, data } = imageData;
+  const result = new ImageData(width, height);
+  const resultData = result.data;
+
+  // Laplacian kernel for edge enhancement
+  const kernel = [
+    0, -amount, 0,
+    -amount, 1 + 4 * amount, -amount,
+    0, -amount, 0,
+  ];
+
+  // Process inner pixels
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      for (let c = 0; c < 3; c++) {
+        let sum = 0;
+        let ki = 0;
+        for (let ky = -1; ky <= 1; ky++) {
+          for (let kx = -1; kx <= 1; kx++) {
+            const idx = ((y + ky) * width + (x + kx)) * 4 + c;
+            sum += data[idx] * kernel[ki++];
+          }
+        }
+        const idx = (y * width + x) * 4 + c;
+        resultData[idx] = Math.max(0, Math.min(255, Math.round(sum)));
+      }
+      resultData[(y * width + x) * 4 + 3] = 255;
+    }
+  }
+
+  // Copy border pixels
+  for (let x = 0; x < width; x++) {
+    const topIdx = x * 4;
+    const bottomIdx = ((height - 1) * width + x) * 4;
+    for (let c = 0; c < 4; c++) {
+      resultData[topIdx + c] = data[topIdx + c];
+      resultData[bottomIdx + c] = data[bottomIdx + c];
+    }
+  }
+  for (let y = 1; y < height - 1; y++) {
+    const leftIdx = y * width * 4;
+    const rightIdx = (y * width + width - 1) * 4;
+    for (let c = 0; c < 4; c++) {
+      resultData[leftIdx + c] = data[leftIdx + c];
+      resultData[rightIdx + c] = data[rightIdx + c];
+    }
+  }
+
+  return result;
+}
+
+// Enhance contrast for better QR detection
+function enhanceContrast(imageData, factor = 1.4) {
+  const { width, height, data } = imageData;
+  const result = new ImageData(width, height);
+  const resultData = result.data;
+
+  const intercept = 128 * (1 - factor);
+
+  for (let i = 0; i < data.length; i += 4) {
+    resultData[i] = Math.max(0, Math.min(255, data[i] * factor + intercept));
+    resultData[i + 1] = Math.max(0, Math.min(255, data[i + 1] * factor + intercept));
+    resultData[i + 2] = Math.max(0, Math.min(255, data[i + 2] * factor + intercept));
+    resultData[i + 3] = data[i + 3];
+  }
+
+  return result;
+}
+
 // Safari-specific optimization
 function optimizeFrameForSafari(imageData) {
   const { width, height, data } = imageData;
@@ -518,12 +641,69 @@ function processVideoFrame(imageBitmap, config = {}) {
       }
     }
 
-    // Decode QR codes with crop and sharpen options
-    const results = decodeQRCode(imageData, {
-      useSlidingWindow: false, // Direct decode for performance
+    // Multi-stage detection for small QR codes
+    let results = [];
+
+    // Stage 1: Quick direct decode (fast path for normal QR)
+    results = decodeQRCode(imageData, {
+      useSlidingWindow: false,
       crop,
       sharpen,
     });
+
+    if (results.length > 0) {
+      return {
+        success: true,
+        results,
+        canvasWidth: scaledWidth,
+        canvasHeight: scaledHeight,
+      };
+    }
+
+    // Stage 2: Sharpen + sliding window for medium QR
+    const sharpened = sharpenForQR(imageData, 1.2);
+    results = decodeQRCode(sharpened, {
+      useSlidingWindow: true,
+      scales: [1.0, 0.8],
+      stride: 0.3,
+      maxWindows: 6,
+      crop,
+      sharpen: null,
+    });
+
+    if (results.length > 0) {
+      return {
+        success: true,
+        results,
+        canvasWidth: scaledWidth,
+        canvasHeight: scaledHeight,
+      };
+    }
+
+    // Stage 3: Center crop + upscale for very small QR
+    const { imageData: centerCrop, offsetX, offsetY } = extractCenterCrop(imageData, 0.5);
+    const upscaled = upscaleImage(centerCrop, 2.5);
+    const enhanced = enhanceContrast(upscaled, 1.3);
+    const sharpUpscaled = sharpenForQR(enhanced, 1.0);
+
+    results = decodeQRCode(sharpUpscaled, {
+      useSlidingWindow: false,
+      crop: null,
+      sharpen: null,
+    });
+
+    // Adjust bounds back to original coordinates
+    if (results.length > 0) {
+      const scale = 2.5;
+      for (const result of results) {
+        if (result.bounds) {
+          result.bounds = result.bounds.map(([x, y]) => [
+            Math.round(x / scale + offsetX),
+            Math.round(y / scale + offsetY),
+          ]);
+        }
+      }
+    }
 
     return {
       success: true,
