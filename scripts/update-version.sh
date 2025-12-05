@@ -112,6 +112,7 @@ print_info "Updating version to: ${VERSION_ARG}"
 # Run npm version with --no-git-tag-version flag to prevent automatic git tag
 if npm version "$VERSION_ARG" --no-git-tag-version >/dev/null 2>&1; then
     NEW_VERSION=$(node -p "require('./package.json').version")
+    sed -i "s/version: ${CURRENT_VERSION}/version: ${NEW_VERSION}/g" src/workers/worker.js
     print_success "Version updated: ${CURRENT_VERSION} → ${NEW_VERSION}"
 else
     print_error "Failed to update version"

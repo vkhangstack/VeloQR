@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { QRScanner, QRImageScanner, QRCodeResult, configureWorker } from '@vkhangstack/veloqr';
+import { useState } from 'react';
+import { QRScanner, QRImageScanner, QRCodeResult } from '@vkhangstack/veloqr';
 import MRZDemo from './MRZDemo';
 
 type TabType = 'camera' | 'image' | 'mrz';
@@ -8,12 +8,6 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('camera');
   const [results, setResults] = useState<QRCodeResult[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  // Configure Web Worker on mount
-  useEffect(() => {
-    configureWorker(true, { workerUrl: '/rust-qr/pkg/worker.js' });
-    console.log('Web Worker enabled for QR processing');
-  }, []);
 
   const handleScan = (scannedResults: QRCodeResult[]) => {
     console.log('QR Codes detected:', scannedResults);
@@ -27,7 +21,7 @@ function App() {
   };
 
   return (
-   
+
     <div className="app">
       <h1>VeloQR</h1>
       <p className="subtitle">
@@ -67,7 +61,7 @@ function App() {
             highlightColor="#667eea"
             highlightBorderWidth={4}
             animationConfig={{
-              showStatusText: false
+              showStatusText: true
             }}
             showCameraSwitch={true}
             showFlashSwitch={true}

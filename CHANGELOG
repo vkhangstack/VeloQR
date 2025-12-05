@@ -1,0 +1,129 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.2.5] - 2024-12-04
+
+
+### Changed
+- Publish version stable package to npm registry https://www.npmjs.com/package/@vkhangstack/veloqr/v/1.2.5
+- Code example updates
+- Version bump to 1.2.5
+
+## [1.2.4] - 2024-11-25
+
+### Changed
+- Refactored image processing to post to worker
+- Version bump to 1.2.4
+
+## [1.2.3] - 2024-11-24
+
+### Added
+- WASM file caching support
+- `decodeQRFromImageData` method
+- Single instance camera usage
+
+### Changed
+- Version bump to 1.2.3
+
+## [1.2.2] - 2024-11-23
+
+### Changed
+- Updated README.npm
+- Version bump to 1.2.2
+
+## [1.2.1] - 2024-11-22
+
+### Added
+- Flash/torch switch button for supported devices
+- `flash` method and enum types
+- Vibration support with `isVibrationSupported` method
+
+### Fixed
+- NotReadableError in Samsung Chrome browser
+
+### Changed
+- UI: Updated demo page height
+- Refactored vibrate functionality
+- Refactored `getCameraDevices` method
+- Updated worker source
+
+## [1.2.0] - 2024-11-20
+
+### Added
+- MRZ (Machine Readable Zone) scanning support for passports and ID cards
+  - TD1 format (ID cards: 3 lines of 30 characters)
+  - TD2 format (travel documents: 2 lines of 36 characters)
+  - TD3 format (passports: 2 lines of 44 characters)
+- `MRZScanner` component for live MRZ scanning
+- `MRZImageScanner` component for image file MRZ scanning
+- `useMRZScanner` hook for advanced MRZ scanning control
+- MRZ utility functions: `formatMRZDate`, `validateMRZ`, `validateCheckDigit`
+- OCR integration using Tesseract.js for MRZ text recognition
+- Rust WASM implementation for MRZ parsing (`parse_mrz_text`)
+
+### Changed
+- Optimized QR code scanning for very small codes
+- Refactored worker helper to use switch case pattern
+- Auto-hide detection overlay after `detectionDuration`
+- Updated version script
+
+## [1.1.0] - 2024-11-15
+
+### Added
+- Frame merging for better accuracy
+- Camera switching support with `showCameraSwitch` prop
+- `preferredCamera` option (front/back or user/environment)
+- Multiple camera device selection
+- `getCameraDevices` utility function
+
+### Changed
+- Improved Safari compatibility
+- Optimized performance for real-time scanning
+
+## [1.0.3] - 2024-11-10
+
+### Added
+- Custom text and internationalization support
+- Pre-configured language support (Vietnamese, English, Spanish, Chinese, Japanese, French)
+- `getTextsByLanguage` utility function
+- Animation configuration options
+- Custom styling props
+
+### Changed
+- Improved animation feedback
+- Enhanced overlay customization
+
+## [1.0.2] - 2024-11-08
+
+### Fixed
+- WASM loading issues in production builds
+- Camera permission handling
+
+### Changed
+- Improved error messages
+- Better documentation
+
+## [1.0.1] - 2024-11-05
+
+### Added
+- Image file scanning support with `QRImageScanner`
+- Multiple QR code detection in single frame
+
+### Fixed
+- Memory leaks in camera stream
+- iOS Safari camera issues
+
+## [1.0.0] - 2024-11-01
+
+### Added
+- Initial release
+- Real-time QR code scanning from webcam
+- `QRScanner` component
+- `useQRScanner` hook
+- WebAssembly-powered QR detection using Rust
+- TypeScript support
+- Customizable animations and overlays
