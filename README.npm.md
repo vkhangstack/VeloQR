@@ -2,6 +2,8 @@
 
 A high-performance React library for scanning QR codes using WebAssembly and Rust. Provides blazing-fast QR code detection with both live camera scanning and image file scanning capabilities.
 
+> [Live Demo](https://vkhangstack.github.io/VeloQR/)
+
 ## Features
 
 - ⚡ **High Performance**: Powered by WebAssembly compiled from Rust for near-native speed
