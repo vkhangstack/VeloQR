@@ -56,8 +56,10 @@ function App() {
           <QRScanner
             onScan={handleScan}
             onError={handleError}
-            scanDelay={100}
+            scanDelay={16}
             showOverlay={true}
+            targetFPS={60}
+            adaptiveProcessing={true}
             highlightColor="#667eea"
             highlightBorderWidth={4}
             animationConfig={{
@@ -68,6 +70,13 @@ function App() {
             vibrate={true}
             enableFrameMerging={false}
             optimizeForSafari={false}
+            preprocessingConfig={{
+              enableGammaCorrection: true,
+              enableAdaptiveThreshold: false,
+              sharpeningSigma: 0.8,
+              sharpeningAmount: 1.2,
+              upscaleFilter: 'triangle',
+            }}
           />
         ) : (
           <QRImageScanner

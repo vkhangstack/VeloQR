@@ -4,6 +4,7 @@ use image::imageops;
 use image::{DynamicImage, RgbaImage};
 use rqrr::PreparedImage;
 use serde::{Deserialize, Serialize};
+use imageproc::contrast::adaptive_threshold;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct QRCodeResult {
@@ -298,6 +299,121 @@ fn extract_names(name_field: &str) -> (String, String) {
 
 // ==================== Image Processing Implementation ====================
 
+/// Apply adaptive gamma correction to enhance QR code visibility
+/// Gamma value is auto-calculated if not provided based on image brightness
+#[wasm_bindgen]
+pub fn apply_adaptive_gamma(
+    image_data: &[u8],
+    width: u32,
+    height: u32,
+    gamma: Option<f32>,
+) -> Result<Vec<u8>, JsValue> {
+    // Convert RGBA to GrayImage
+    let gray = rgba_to_gray(image_data, width, height)
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    // Calculate auto gamma if not provided
+    let gamma_value = gamma.unwrap_or_else(|| calculate_auto_gamma(&gray));
+
+    console_log!("Applying gamma correction: {}", gamma_value);
+
+    // Apply gamma correction
+    let corrected = apply_gamma_correction(&gray, gamma_value);
+
+    // Convert back to RGBA
+    let mut rgba_output = vec![0u8; (width * height * 4) as usize];
+    for y in 0..height {
+        for x in 0..width {
+            let gray_value = corrected.get_pixel(x, y)[0];
+            let idx = ((y * width + x) * 4) as usize;
+            rgba_output[idx] = gray_value;
+            rgba_output[idx + 1] = gray_value;
+            rgba_output[idx + 2] = gray_value;
+            rgba_output[idx + 3] = 255; // Full alpha
+        }
+    }
+
+    Ok(rgba_output)
+}
+
+/// Calculate optimal gamma value based on image brightness
+fn calculate_auto_gamma(gray: &GrayImage) -> f32 {
+    let total_pixels = (gray.width() * gray.height()) as f32;
+    let mean_brightness: f32 = gray.pixels()
+        .map(|p| p[0] as f32)
+        .sum::<f32>() / total_pixels;
+
+    console_log!("Mean brightness: {}", mean_brightness);
+
+    // Adaptive gamma based on brightness
+    if mean_brightness > 180.0 {
+        // Too bright (glare) - darken
+        0.7
+    } else if mean_brightness < 75.0 {
+        // Too dark - brighten
+        1.5
+    } else {
+        // Normal range - no correction
+        1.0
+    }
+}
+
+/// Apply gamma correction using lookup table for performance
+fn apply_gamma_correction(gray: &GrayImage, gamma: f32) -> GrayImage {
+    let mut output = GrayImage::new(gray.width(), gray.height());
+
+    // Build lookup table
+    let lut: Vec<u8> = (0..256)
+        .map(|i| {
+            let normalized = i as f32 / 255.0;
+            let corrected = normalized.powf(gamma);
+            (corrected * 255.0).min(255.0) as u8
+        })
+        .collect();
+
+    // Apply LUT
+    for (x, y, pixel) in gray.enumerate_pixels() {
+        let value = pixel[0];
+        output.put_pixel(x, y, image::Luma([lut[value as usize]]));
+    }
+
+    output
+}
+
+/// Apply adaptive thresholding to improve QR code detection in low contrast scenarios
+#[wasm_bindgen]
+pub fn apply_adaptive_threshold(
+    image_data: &[u8],
+    width: u32,
+    height: u32,
+    block_radius: u32,
+) -> Result<Vec<u8>, JsValue> {
+    // Convert RGBA to GrayImage
+    let gray = rgba_to_gray(image_data, width, height)
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    console_log!("Applying adaptive threshold with block_radius: {}", block_radius);
+
+    // Apply adaptive threshold
+    // The adaptive_threshold function automatically handles the gaussian weighting
+    let thresholded = adaptive_threshold(&gray, block_radius);
+
+    // Convert back to RGBA
+    let mut rgba_output = vec![0u8; (width * height * 4) as usize];
+    for y in 0..height {
+        for x in 0..width {
+            let gray_value = thresholded.get_pixel(x, y)[0];
+            let idx = ((y * width + x) * 4) as usize;
+            rgba_output[idx] = gray_value;
+            rgba_output[idx + 1] = gray_value;
+            rgba_output[idx + 2] = gray_value;
+            rgba_output[idx + 3] = 255; // Full alpha
+        }
+    }
+
+    Ok(rgba_output)
+}
+
 #[wasm_bindgen]
 pub fn crop_image(
     image_data: &[u8],
@@ -337,4 +453,72 @@ pub fn sharpen_image(
     let sharpened_img = imageops::unsharpen(&img, amount, 1);
 
     Ok(sharpened_img.into_raw())
+}
+
+/// Advanced sharpening with configurable parameters to reduce noise amplification
+#[wasm_bindgen]
+pub fn sharpen_image_advanced(
+    image_data: &[u8],
+    width: u32,
+    height: u32,
+    sigma: f32,
+    amount: f32,
+    threshold: i32,
+) -> Result<Vec<u8>, JsValue> {
+    let img_buffer = match RgbaImage::from_raw(width, height, image_data.to_vec()) {
+        Some(buffer) => buffer,
+        None => return Err(JsValue::from_str("Failed to create image from buffer")),
+    };
+    let img = DynamicImage::ImageRgba8(img_buffer);
+
+    console_log!("Advanced sharpen: sigma={}, amount={}, threshold={}", sigma, amount, threshold);
+
+    // Apply unsharp mask with custom parameters
+    // sigma: controls blur radius (0.5-2.0)
+    // amount: controls sharpening strength (0.5-2.5)
+    // threshold: noise reduction threshold (0-10)
+    let sharpened_img = imageops::unsharpen(&img, sigma, threshold);
+
+    // Apply additional sharpening if amount > 1.0
+    if amount > 1.0 {
+        let sharpened_img = imageops::unsharpen(&sharpened_img, sigma * 0.8, threshold);
+        Ok(sharpened_img.into_raw())
+    } else {
+        Ok(sharpened_img.into_raw())
+    }
+}
+
+/// Advanced upscaling with multiple filter options
+/// filter: 0=Nearest, 1=Triangle, 2=CatmullRom, 3=Lanczos3
+#[wasm_bindgen]
+pub fn upscale_image_advanced(
+    image_data: &[u8],
+    width: u32,
+    height: u32,
+    scale_factor: f32,
+    filter: u8,
+) -> Result<Vec<u8>, JsValue> {
+    let img_buffer = match RgbaImage::from_raw(width, height, image_data.to_vec()) {
+        Some(buffer) => buffer,
+        None => return Err(JsValue::from_str("Failed to create image from buffer")),
+    };
+    let img = DynamicImage::ImageRgba8(img_buffer);
+
+    let new_width = (width as f32 * scale_factor) as u32;
+    let new_height = (height as f32 * scale_factor) as u32;
+
+    let filter_type = match filter {
+        0 => imageops::FilterType::Nearest,
+        1 => imageops::FilterType::Triangle,
+        2 => imageops::FilterType::CatmullRom,
+        3 => imageops::FilterType::Lanczos3,
+        _ => imageops::FilterType::CatmullRom, // Default to CatmullRom
+    };
+
+    console_log!("Upscaling {}x{} to {}x{} with filter {:?}",
+                 width, height, new_width, new_height, filter);
+
+    let resized = imageops::resize(&img, new_width, new_height, filter_type);
+
+    Ok(resized.into_raw())
 }

@@ -20,6 +20,9 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     crop,
     sharpen,
     vibrate = false,
+    preprocessingConfig,
+    targetFPS = 30,
+    adaptiveProcessing = true,
   } = options;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -62,11 +65,14 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         enableFrameMerging,
         frameMergeCount,
         optimizeForSafari,
+        preprocessingConfig,
+        targetFPS,
+        adaptiveProcessing,
       }).catch(err => {
         console.warn('[useQRScanner] Failed to update worker config:', err);
       });
     }
-  }, [resolutionScale, crop, sharpen, enableFrameMerging, frameMergeCount, optimizeForSafari]);
+  }, [resolutionScale, crop, sharpen, enableFrameMerging, frameMergeCount, optimizeForSafari, preprocessingConfig, targetFPS, adaptiveProcessing]);
 
   const scan = useCallback(async () => {
     // Skip if already scanning to prevent concurrent scans

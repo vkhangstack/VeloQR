@@ -69,6 +69,26 @@ export interface AnimationConfig {
   showProgressBar?: boolean; // Show progress bar for processing
 }
 
+export interface PreprocessingConfig {
+  enableGammaCorrection?: boolean; // Enable adaptive gamma correction
+  gamma?: number; // 0.8-2.2, auto if undefined
+  enableCLAHE?: boolean; // Enable CLAHE (Contrast Limited Adaptive Histogram Equalization)
+  claheClipLimit?: number; // 2.0-4.0 for CLAHE
+  claheTileSize?: number; // 8 or 16 for CLAHE
+  enableAdaptiveThreshold?: boolean; // Enable adaptive thresholding
+  adaptiveBlockRadius?: number; // 15-25 for adaptive threshold
+  adaptiveConstant?: number; // -5 to 5 for adaptive threshold
+  sharpeningSigma?: number; // 0.5-2.0 for sharpening
+  sharpeningAmount?: number; // 0.5-2.5 for sharpening
+  sharpeningThreshold?: number; // 0-10 for noise reduction
+  upscaleFilter?: 'nearest' | 'triangle' | 'catmullrom' | 'lanczos3'; // Upscaling filter
+}
+
+export interface PerformanceConfig {
+  targetFPS?: number; // Target frames per second (30 or 60, default: 30)
+  adaptiveProcessing?: boolean; // Enable adaptive processing (skip heavy ops when detection is good, default: true)
+}
+
 export interface QRScannerProps {
   onScan?: (results: QRCodeResult[]) => void;
   onError?: (error: Error) => void;
@@ -97,7 +117,10 @@ export interface QRScannerProps {
     height: number; // Crop area for scanning (in pixels)
   };
   sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
-  vibrate?: boolean; // Vibrate when QR code is detected  
+  vibrate?: boolean; // Vibrate when QR code is detected
+  preprocessingConfig?: PreprocessingConfig; // Advanced preprocessing configuration
+  targetFPS?: number; // Target frames per second (30 or 60, default: 30)
+  adaptiveProcessing?: boolean; // Enable adaptive processing (default: true)
 }
 
 export interface QRImageScannerProps {
@@ -130,7 +153,10 @@ export interface UseQRScannerOptions {
     height: number; // Crop area for scanning (in pixels)
   };
   sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
-  vibrate?: boolean; // Vibrate when QR code is detected  
+  vibrate?: boolean; // Vibrate when QR code is detected
+  preprocessingConfig?: PreprocessingConfig; // Advanced preprocessing configuration
+  targetFPS?: number; // Target frames per second (30 or 60, default: 30)
+  adaptiveProcessing?: boolean; // Enable adaptive processing (default: true)
 }
 
 export interface UseQRScannerReturn {

@@ -33,6 +33,9 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   crop,
   sharpen,
   vibrate = false,
+  preprocessingConfig,
+  targetFPS = 30,
+  adaptiveProcessing = true,
 }) => {
   const [showDetection, setShowDetection] = useState(false);
   const [currentFacing, setCurrentFacing] = useState<SimpleCameraFacing>(
@@ -108,7 +111,10 @@ export const QRScanner: React.FC<QRScannerProps> = ({
     preferredCamera,
     crop,
     sharpen,
-    vibrate
+    vibrate,
+    preprocessingConfig,
+    targetFPS,
+    adaptiveProcessing,
   });
 
   const handleCameraSwitch = async () => {

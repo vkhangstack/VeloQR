@@ -14,6 +14,50 @@ let currentResolutionScale = 1;
 let currentCrop = null;
 let currentSharpen = null;
 let optimizeForSafari = false;
+let preprocessingConfig = {
+  enableGammaCorrection: false,
+  gamma: undefined,
+  enableAdaptiveThreshold: false,
+  adaptiveBlockRadius: 20,
+  sharpeningSigma: 1.0,
+  sharpeningAmount: 1.5,
+  sharpeningThreshold: 5,
+  upscaleFilter: 'catmullrom', // 'nearest', 'triangle', 'catmullrom', 'lanczos3'
+};
+
+// Performance optimization state
+let targetFPS = 30; // Default target FPS
+let adaptiveProcessing = true; // Enable adaptive processing by default
+let stage1SuccessCount = 0;
+let stage1TotalCount = 0;
+let consecutiveStage1Success = 0;
+let lastFrameTime = 0;
+let frameTimings = [];
+const MAX_FRAME_TIMING_SAMPLES = 10;
+
+// Update frame timing statistics
+function updateFrameTiming(elapsed) {
+  frameTimings.push(elapsed);
+  if (frameTimings.length > MAX_FRAME_TIMING_SAMPLES) {
+    frameTimings.shift();
+  }
+  lastFrameTime = elapsed;
+}
+
+// Get average frame time
+function getAverageFrameTime() {
+  if (frameTimings.length === 0) return 0;
+  const sum = frameTimings.reduce((a, b) => a + b, 0);
+  return sum / frameTimings.length;
+}
+
+// Reset performance statistics
+function resetPerformanceStats() {
+  stage1SuccessCount = 0;
+  stage1TotalCount = 0;
+  consecutiveStage1Success = 0;
+  frameTimings = [];
+}
 
 // Load and initialize WASM module
 async function initializeWasm(wasmUrl, wasmJsUrl) {
@@ -380,6 +424,15 @@ function updateCanvasConfig(config) {
   if (config.optimizeForSafari !== undefined) {
     optimizeForSafari = config.optimizeForSafari;
   }
+  if (config.preprocessingConfig !== undefined) {
+    preprocessingConfig = { ...preprocessingConfig, ...config.preprocessingConfig };
+  }
+  if (config.targetFPS !== undefined) {
+    targetFPS = config.targetFPS;
+  }
+  if (config.adaptiveProcessing !== undefined) {
+    adaptiveProcessing = config.adaptiveProcessing;
+  }
   console.log('[Worker] Canvas config updated:', config);
 }
 
@@ -522,6 +575,64 @@ function sharpenForQR(imageData, amount = 1.5) {
   return result;
 }
 
+// Advanced sharpening using WASM with noise reduction
+function sharpenAdvanced(imageData) {
+  if (!wasmModule || !wasmModule.sharpen_image_advanced) {
+    return sharpenForQR(imageData, 1.2); // Fallback to JS implementation
+  }
+
+  try {
+    const { width, height, data } = imageData;
+    const processed = wasmModule.sharpen_image_advanced(
+      data,
+      width,
+      height,
+      preprocessingConfig.sharpeningSigma,
+      preprocessingConfig.sharpeningAmount,
+      preprocessingConfig.sharpeningThreshold
+    );
+    return new ImageData(new Uint8ClampedArray(processed), width, height);
+  } catch (err) {
+    console.warn('[Worker] Advanced sharpen failed, using fallback:', err);
+    return sharpenForQR(imageData, 1.2);
+  }
+}
+
+// Advanced upscaling using WASM with configurable filters
+function upscaleAdvanced(imageData, scaleFactor) {
+  if (!wasmModule || !wasmModule.upscale_image_advanced) {
+    return upscaleImage(imageData, scaleFactor); // Fallback to canvas upscale
+  }
+
+  try {
+    const { width, height, data } = imageData;
+
+    // Map filter name to filter index
+    const filterMap = {
+      'nearest': 0,
+      'triangle': 1,
+      'catmullrom': 2,
+      'lanczos3': 3,
+    };
+    const filterIndex = filterMap[preprocessingConfig.upscaleFilter] ?? 2;
+
+    const processed = wasmModule.upscale_image_advanced(
+      data,
+      width,
+      height,
+      scaleFactor,
+      filterIndex
+    );
+
+    const newWidth = Math.floor(width * scaleFactor);
+    const newHeight = Math.floor(height * scaleFactor);
+    return new ImageData(new Uint8ClampedArray(processed), newWidth, newHeight);
+  } catch (err) {
+    console.warn('[Worker] Advanced upscale failed, using fallback:', err);
+    return upscaleImage(imageData, scaleFactor);
+  }
+}
+
 // Enhance contrast for better QR detection
 function enhanceContrast(imageData, factor = 1.4) {
   const { width, height, data } = imageData;
@@ -641,75 +752,165 @@ function processVideoFrame(imageBitmap, config = {}) {
       }
     }
 
-    // Multi-stage detection for small QR codes
+    // Performance tracking
+    const frameStartTime = performance.now();
+    const targetFrameTime = 1000 / targetFPS; // ms per frame for target FPS
+
+    // Calculate Stage 1 success rate for adaptive processing
+    const stage1SuccessRate = stage1TotalCount > 0 ? stage1SuccessCount / stage1TotalCount : 0;
+    const shouldUsePreprocessing = adaptiveProcessing
+      ? (stage1SuccessRate < 0.7 || consecutiveStage1Success < 3) // Only preprocess if detection is struggling
+      : true; // Always preprocess if adaptive is disabled
+
+    // Stage 0: Preprocessing for difficult conditions (adaptive)
+    if (shouldUsePreprocessing) {
+      if (preprocessingConfig.enableGammaCorrection && wasmModule.apply_adaptive_gamma) {
+        try {
+          const gamma = preprocessingConfig.gamma; // undefined = auto
+          const processed = wasmModule.apply_adaptive_gamma(
+            imageData.data,
+            imageData.width,
+            imageData.height,
+            gamma
+          );
+          imageData = new ImageData(
+            new Uint8ClampedArray(processed),
+            imageData.width,
+            imageData.height
+          );
+        } catch (err) {
+          console.warn('[Worker] Gamma correction failed:', err);
+        }
+      }
+
+      if (preprocessingConfig.enableAdaptiveThreshold && wasmModule.apply_adaptive_threshold) {
+        try {
+          const processed = wasmModule.apply_adaptive_threshold(
+            imageData.data,
+            imageData.width,
+            imageData.height,
+            preprocessingConfig.adaptiveBlockRadius
+          );
+          imageData = new ImageData(
+            new Uint8ClampedArray(processed),
+            imageData.width,
+            imageData.height
+          );
+        } catch (err) {
+          console.warn('[Worker] Adaptive threshold failed:', err);
+        }
+      }
+    }
+
+    // Multi-stage detection with early exit for 60 FPS
     let results = [];
+    let stageUsed = 0;
 
     // Stage 1: Quick direct decode (fast path for normal QR)
+    const stage1Start = performance.now();
     results = decodeQRCode(imageData, {
       useSlidingWindow: false,
       crop,
       sharpen,
     });
+    stageUsed = 1;
 
+    // Track Stage 1 success for adaptive processing
+    stage1TotalCount++;
     if (results.length > 0) {
+      stage1SuccessCount++;
+      consecutiveStage1Success++;
+
+      // Update frame timing
+      const elapsed = performance.now() - frameStartTime;
+      updateFrameTiming(elapsed);
+
       return {
         success: true,
         results,
         canvasWidth: scaledWidth,
         canvasHeight: scaledHeight,
+        stage: stageUsed,
+        processingTime: elapsed,
       };
+    } else {
+      consecutiveStage1Success = 0;
     }
 
-    // Stage 2: Sharpen + sliding window for medium QR
-    const sharpened = sharpenForQR(imageData, 1.2);
-    results = decodeQRCode(sharpened, {
-      useSlidingWindow: true,
-      scales: [1.0, 0.8],
-      stride: 0.3,
-      maxWindows: 6,
-      crop,
-      sharpen: null,
-    });
+    // Check if we have time budget for Stage 2
+    const elapsedSoFar = performance.now() - frameStartTime;
+    const shouldSkipStage2 = adaptiveProcessing && (elapsedSoFar > targetFrameTime * 0.6);
 
-    if (results.length > 0) {
-      return {
-        success: true,
-        results,
-        canvasWidth: scaledWidth,
-        canvasHeight: scaledHeight,
-      };
+    if (!shouldSkipStage2) {
+      // Stage 2: Sharpen + sliding window for medium QR
+      const sharpened = sharpenAdvanced(imageData);
+      results = decodeQRCode(sharpened, {
+        useSlidingWindow: true,
+        scales: [1.0, 0.8],
+        stride: 0.3,
+        maxWindows: 6,
+        crop,
+        sharpen: null,
+      });
+      stageUsed = 2;
+
+      if (results.length > 0) {
+        const elapsed = performance.now() - frameStartTime;
+        updateFrameTiming(elapsed);
+
+        return {
+          success: true,
+          results,
+          canvasWidth: scaledWidth,
+          canvasHeight: scaledHeight,
+          stage: stageUsed,
+          processingTime: elapsed,
+        };
+      }
     }
 
-    // Stage 3: Center crop + upscale for very small QR
-    const { imageData: centerCrop, offsetX, offsetY } = extractCenterCrop(imageData, 0.5);
-    const upscaled = upscaleImage(centerCrop, 2.5);
-    const enhanced = enhanceContrast(upscaled, 1.3);
-    const sharpUpscaled = sharpenForQR(enhanced, 1.0);
+    // Check if we have time budget for Stage 3
+    const elapsedBeforeStage3 = performance.now() - frameStartTime;
+    const shouldSkipStage3 = adaptiveProcessing && (elapsedBeforeStage3 > targetFrameTime * 0.8);
 
-    results = decodeQRCode(sharpUpscaled, {
-      useSlidingWindow: false,
-      crop: null,
-      sharpen: null,
-    });
+    if (!shouldSkipStage3) {
+      // Stage 3: Center crop + upscale for very small QR
+      const { imageData: centerCrop, offsetX, offsetY } = extractCenterCrop(imageData, 0.5);
+      const upscaled = upscaleAdvanced(centerCrop, 2.5);
+      const enhanced = enhanceContrast(upscaled, 1.3);
+      const sharpUpscaled = sharpenAdvanced(enhanced);
 
-    // Adjust bounds back to original coordinates
-    if (results.length > 0) {
-      const scale = 2.5;
-      for (const result of results) {
-        if (result.bounds) {
-          result.bounds = result.bounds.map(([x, y]) => [
-            Math.round(x / scale + offsetX),
-            Math.round(y / scale + offsetY),
-          ]);
+      results = decodeQRCode(sharpUpscaled, {
+        useSlidingWindow: false,
+        crop: null,
+        sharpen: null,
+      });
+      stageUsed = 3;
+
+      // Adjust bounds back to original coordinates
+      if (results.length > 0) {
+        const scale = 2.5;
+        for (const result of results) {
+          if (result.bounds) {
+            result.bounds = result.bounds.map(([x, y]) => [
+              Math.round(x / scale + offsetX),
+              Math.round(y / scale + offsetY),
+            ]);
+          }
         }
       }
     }
+
+    const elapsed = performance.now() - frameStartTime;
+    updateFrameTiming(elapsed);
 
     return {
       success: true,
       results,
       canvasWidth: scaledWidth,
       canvasHeight: scaledHeight,
+      stage: stageUsed,
+      processingTime: elapsed,
     };
   } catch (error) {
     console.error('[Worker] Frame processing error:', error);
@@ -758,7 +959,37 @@ self.onmessage = async function (e) {
           results: result.results,
           canvasWidth: result.canvasWidth,
           canvasHeight: result.canvasHeight,
+          stage: result.stage,
+          processingTime: result.processingTime,
           error: result.error,
+        });
+        break;
+      }
+
+      case 'get-performance-stats': {
+        self.postMessage({
+          type: 'get-performance-stats-response',
+          id,
+          stats: {
+            stage1SuccessRate: stage1TotalCount > 0 ? stage1SuccessCount / stage1TotalCount : 0,
+            stage1SuccessCount,
+            stage1TotalCount,
+            consecutiveStage1Success,
+            averageFrameTime: getAverageFrameTime(),
+            lastFrameTime,
+            targetFPS,
+            adaptiveProcessing,
+          },
+        });
+        break;
+      }
+
+      case 'reset-performance-stats': {
+        resetPerformanceStats();
+        self.postMessage({
+          type: 'reset-performance-stats-response',
+          id,
+          success: true,
         });
         break;
       }

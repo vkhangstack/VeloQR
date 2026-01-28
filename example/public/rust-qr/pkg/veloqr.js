@@ -1,6 +1,65 @@
 /* @ts-self-types="./veloqr.d.ts" */
 
 /**
+ * Apply adaptive gamma correction to enhance QR code visibility
+ * Gamma value is auto-calculated if not provided based on image brightness
+ * @param {Uint8Array} image_data
+ * @param {number} width
+ * @param {number} height
+ * @param {number | null} [gamma]
+ * @returns {Uint8Array}
+ */
+export function apply_adaptive_gamma(image_data, width, height, gamma) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(image_data, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.apply_adaptive_gamma(retptr, ptr0, len0, width, height, isLikeNone(gamma) ? 0x100000001 : Math.fround(gamma));
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v2 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * Apply adaptive thresholding to improve QR code detection in low contrast scenarios
+ * @param {Uint8Array} image_data
+ * @param {number} width
+ * @param {number} height
+ * @param {number} block_radius
+ * @returns {Uint8Array}
+ */
+export function apply_adaptive_threshold(image_data, width, height, block_radius) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(image_data, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.apply_adaptive_threshold(retptr, ptr0, len0, width, height, block_radius);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v2 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
  * @param {Uint8Array} image_data
  * @param {number} width
  * @param {number} height
@@ -115,6 +174,68 @@ export function sharpen_image(image_data, width, height, amount) {
     }
 }
 
+/**
+ * Advanced sharpening with configurable parameters to reduce noise amplification
+ * @param {Uint8Array} image_data
+ * @param {number} width
+ * @param {number} height
+ * @param {number} sigma
+ * @param {number} amount
+ * @param {number} threshold
+ * @returns {Uint8Array}
+ */
+export function sharpen_image_advanced(image_data, width, height, sigma, amount, threshold) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(image_data, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.sharpen_image_advanced(retptr, ptr0, len0, width, height, sigma, amount, threshold);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v2 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
+/**
+ * Advanced upscaling with multiple filter options
+ * filter: 0=Nearest, 1=Triangle, 2=CatmullRom, 3=Lanczos3
+ * @param {Uint8Array} image_data
+ * @param {number} width
+ * @param {number} height
+ * @param {number} scale_factor
+ * @param {number} filter
+ * @returns {Uint8Array}
+ */
+export function upscale_image_advanced(image_data, width, height, scale_factor, filter) {
+    try {
+        const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+        const ptr0 = passArray8ToWasm0(image_data, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.upscale_image_advanced(retptr, ptr0, len0, width, height, scale_factor, filter);
+        var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
+        var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
+        var r2 = getDataViewMemory0().getInt32(retptr + 4 * 2, true);
+        var r3 = getDataViewMemory0().getInt32(retptr + 4 * 3, true);
+        if (r3) {
+            throw takeObject(r2);
+        }
+        var v2 = getArrayU8FromWasm0(r0, r1).slice();
+        wasm.__wbindgen_export2(r0, r1 * 1, 1);
+        return v2;
+    } finally {
+        wasm.__wbindgen_add_to_stack_pointer(16);
+    }
+}
+
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -206,6 +327,10 @@ let heap = new Array(128).fill(undefined);
 heap.push(undefined, null, true, false);
 
 let heap_next = heap.length;
+
+function isLikeNone(x) {
+    return x === undefined || x === null;
+}
 
 function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
