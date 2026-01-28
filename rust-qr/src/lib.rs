@@ -1,6 +1,6 @@
 use wasm_bindgen::prelude::*;
-use image::{GrayImage, ImageBuffer};
-use image::imageops;
+use image::{GrayImage, ImageBuffer, Luma};
+use image::imageops::{self, FilterType};
 use image::{DynamicImage, RgbaImage};
 use rqrr::PreparedImage;
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,8 @@ macro_rules! console_log {
     ($($t:tt)*) => {()}
 }
 
+// ==================== Enhanced QR Detection with Region-based Scanning ====================
+
 /// Decode QR codes from image data (RGBA format)
 /// Returns a JSON string containing an array of detected QR codes
 #[wasm_bindgen]
@@ -46,13 +48,34 @@ pub fn decode_qr_from_image(
     let gray_image = rgba_to_gray(image_data, width, height)
         .map_err(|e| JsValue::from_str(&format!("Failed to convert image: {}", e)))?;
 
-    // Prepare image for QR detection
-    let mut prepared = PreparedImage::prepare(gray_image);
+    // Try standard detection first (fast path)
+    let results = detect_qr_standard(&gray_image);
+    
+    if !results.is_empty() {
+        console_log!("Standard detection found {} QR codes", results.len());
+        return serde_wasm_bindgen::to_value(&results)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)));
+    }
 
-    // Find QR codes
+    // If standard detection fails, try region-based scanning for small QR codes
+    console_log!("Standard detection failed, trying region-based scanning...");
+    let results = scan_regions_for_qr(&gray_image);
+
+    console_log!("Region-based scanning found {} QR codes", results.len());
+    serde_wasm_bindgen::to_value(&results)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Standard QR detection (fast path)
+fn detect_qr_standard(gray_image: &GrayImage) -> Vec<QRCodeResult> {
+    let mut prepared = PreparedImage::prepare(gray_image.clone());
     let grids = prepared.detect_grids();
-    console_log!("Detected {} QR codes", grids.len());
+    
+    decode_grids(grids, 1.0, 0.0, 0.0)
+}
 
+/// Decode detected grids to QR results
+fn decode_grids(grids: Vec<rqrr::Grid>, scale: f32, offset_x: f32, offset_y: f32) -> Vec<QRCodeResult> {
     let mut results: Vec<QRCodeResult> = Vec::new();
 
     for grid in grids {
@@ -61,7 +84,12 @@ pub fn decode_qr_from_image(
                 let bounds = grid
                     .bounds
                     .iter()
-                    .map(|p| (p.x as f64, p.y as f64))
+                    .map(|p| {
+                        (
+                            (p.x as f32 / scale + offset_x) as f64,
+                            (p.y as f32 / scale + offset_y) as f64,
+                        )
+                    })
                     .collect();
 
                 results.push(QRCodeResult {
@@ -76,11 +104,98 @@ pub fn decode_qr_from_image(
         }
     }
 
-    serde_wasm_bindgen::to_value(&results)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    results
 }
 
-/// Convert RGBA image data to grayscale
+/// Add unique results (avoid duplicates)
+fn add_unique_results(
+    all_results: &mut Vec<QRCodeResult>,
+    found_data: &mut std::collections::HashSet<String>,
+    new_results: Vec<QRCodeResult>,
+) {
+    for result in new_results {
+        if !found_data.contains(&result.data) {
+            found_data.insert(result.data.clone());
+            all_results.push(result);
+        }
+    }
+}
+
+/// Scan image regions for small QR codes
+/// Uses overlapping regions with upscaling to detect small QR codes
+fn scan_regions_for_qr(gray_image: &GrayImage) -> Vec<QRCodeResult> {
+    let (width, height) = gray_image.dimensions();
+    let mut all_results: Vec<QRCodeResult> = Vec::new();
+    let mut found_data: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // Skip region scanning for small images
+    if width < 400 || height < 400 {
+        return all_results;
+    }
+
+    // Scale factors for upscaling regions
+    let scale_factors: [f32; 3] = [1.5, 2.0, 2.5];
+
+    // Define overlapping regions (2x2 grid with 2/3 overlap)
+    let region_width = width * 2 / 3;
+    let region_height = height * 2 / 3;
+    let step_x = width / 3;
+    let step_y = height / 3;
+
+    for row in 0..2 {
+        for col in 0..2 {
+            let x = col * step_x;
+            let y = row * step_y;
+            
+            let rx2 = (x + region_width).min(width);
+            let ry2 = (y + region_height).min(height);
+            let rw = rx2 - x;
+            let rh = ry2 - y;
+
+            // Extract region
+            let region = imageops::crop_imm(gray_image, x, y, rw, rh).to_image();
+
+            // Try detection on region with different scale factors
+            for &scale in &scale_factors {
+                let upscaled = upscale_image(&region, scale);
+                
+                let mut prepared = PreparedImage::prepare(upscaled);
+                let grids = prepared.detect_grids();
+                
+                if !grids.is_empty() {
+                    let results = decode_grids(
+                        grids,
+                        scale,
+                        x as f32,
+                        y as f32,
+                    );
+                    add_unique_results(&mut all_results, &mut found_data, results);
+                }
+
+                // Early exit if found
+                if !all_results.is_empty() {
+                    return all_results;
+                }
+            }
+        }
+    }
+
+    all_results
+}
+
+/// Upscale image using high-quality interpolation
+fn upscale_image(gray_image: &GrayImage, scale: f32) -> GrayImage {
+    let new_width = (gray_image.width() as f32 * scale) as u32;
+    let new_height = (gray_image.height() as f32 * scale) as u32;
+    
+    // Use Lanczos3 for high quality upscaling
+    let dynamic_img = DynamicImage::ImageLuma8(gray_image.clone());
+    let resized = dynamic_img.resize_exact(new_width, new_height, FilterType::Lanczos3);
+    
+    resized.to_luma8()
+}
+
+/// Convert RGBA image data to grayscale with enhanced processing
 fn rgba_to_gray(rgba: &[u8], width: u32, height: u32) -> Result<GrayImage, String> {
     if rgba.len() != (width * height * 4) as usize {
         return Err(format!(
@@ -99,9 +214,9 @@ fn rgba_to_gray(rgba: &[u8], width: u32, height: u32) -> Result<GrayImage, Strin
             let g = rgba[idx + 1] as f32;
             let b = rgba[idx + 2] as f32;
 
-            // Standard grayscale conversion formula
+            // Standard grayscale conversion formula (ITU-R BT.601)
             let gray_value = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
-            gray.put_pixel(x, y, image::Luma([gray_value]));
+            gray.put_pixel(x, y, Luma([gray_value]));
         }
     }
 
