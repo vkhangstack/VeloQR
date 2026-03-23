@@ -47,12 +47,19 @@ export {
   getRecommendedVideoConstraints,
   isLowEndDevice,
 } from './utils/performanceOptimizer';
+export {
+  adaptiveNormalize,
+  estimateBlur,
+  sharpenLight,
+  preprocessForQR,
+} from './utils/image-preprocessor';
 export type {
   QRCodeResult,
   QRScannerProps,
   QRImageScannerProps,
   UseQRScannerOptions,
   UseQRScannerReturn,
+  PerformanceStats,
   AnimationText,
   AnimationConfig,
   WasmConfig,

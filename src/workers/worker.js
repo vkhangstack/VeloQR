@@ -592,6 +592,71 @@ function optimizeFrameForSafari(imageData) {
   return enhanced;
 }
 
+// Adaptive contrast normalization using percentile histogram stretching.
+// Stretches 2nd-98th percentile luminance range to [0,255].
+// Returns original imageData if image is already well-exposed (range <= 4).
+function adaptiveNormalize(imageData) {
+  const { width, height, data } = imageData;
+  const totalPixels = width * height;
+
+  const hist = new Int32Array(256);
+  for (let i = 0; i < data.length; i += 4) {
+    hist[(data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8]++;
+  }
+
+  const lowCut = totalPixels * 0.02;
+  const highCut = totalPixels * 0.98;
+  let low = 0, high = 255, cumSum = 0;
+  for (let i = 0; i < 256; i++) {
+    cumSum += hist[i];
+    if (cumSum <= lowCut) low = i;
+    if (cumSum <= highCut) high = i;
+  }
+
+  if (high <= low + 4) return imageData;
+
+  const scale = 255 / (high - low);
+  const result = new ImageData(width, height);
+  const rd = result.data;
+  for (let i = 0; i < data.length; i += 4) {
+    rd[i]     = (data[i]     - low) * scale;
+    rd[i + 1] = (data[i + 1] - low) * scale;
+    rd[i + 2] = (data[i + 2] - low) * scale;
+    rd[i + 3] = data[i + 3];
+  }
+  return result;
+}
+
+// Estimates image sharpness via Laplacian variance on sparse pixel samples.
+// Samples every 4th pixel in both axes (~16x faster than full scan).
+// Returns variance — higher = sharper. Below ~50 indicates blur.
+function estimateBlur(imageData) {
+  const { width, height, data } = imageData;
+  const stride = 4;
+  let sum = 0, sumSq = 0, count = 0;
+
+  for (let y = 1; y < height - 1; y += stride) {
+    for (let x = 1; x < width - 1; x += stride) {
+      const c = (y * width + x) * 4;
+      const t = c - width * 4;
+      const b = c + width * 4;
+      const gc = (data[c]     * 77 + data[c + 1] * 150 + data[c + 2] * 29) >> 8;
+      const gt = (data[t]     * 77 + data[t + 1] * 150 + data[t + 2] * 29) >> 8;
+      const gb = (data[b]     * 77 + data[b + 1] * 150 + data[b + 2] * 29) >> 8;
+      const gl = (data[c - 4] * 77 + data[c - 3] * 150 + data[c - 2] * 29) >> 8;
+      const gr = (data[c + 4] * 77 + data[c + 5] * 150 + data[c + 6] * 29) >> 8;
+      const lap = Math.abs(4 * gc - gt - gb - gl - gr);
+      sum += lap;
+      sumSq += lap * lap;
+      count++;
+    }
+  }
+
+  if (count === 0) return 0;
+  const mean = sum / count;
+  return sumSq / count - mean * mean;
+}
+
 // Process video frame with ImageBitmap
 function processVideoFrame(imageBitmap, config = {}) {
   if (!offscreenCanvas || !offscreenContext) {
@@ -627,9 +692,16 @@ function processVideoFrame(imageBitmap, config = {}) {
     // Get image data
     let imageData = offscreenContext.getImageData(0, 0, scaledWidth, scaledHeight);
 
-    // Apply Safari optimization if enabled
+    // Apply pre-processing before decode attempts:
+    // Safari path: downscale + fixed contrast (tuned for Safari rendering)
+    // Non-Safari path: adaptive contrast normalization + conditional light sharpening
     if (safariOptimize) {
       imageData = optimizeFrameForSafari(imageData);
+    } else {
+      imageData = adaptiveNormalize(imageData);
+      if (estimateBlur(imageData) < 50) {
+        imageData = sharpenForQR(imageData, 0.6);
+      }
     }
 
     // Apply frame merging if enabled

@@ -1,8 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice, CameraFacingMode, CameraFacing } from '../types';
+import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice, CameraFacingMode, CameraFacing, PerformanceStats } from '../types';
 import { initWasm, decodeQRFromImageData, supportsOffscreenCanvas, processVideoFrame, updateWorkerConfig, clearFrameBuffer } from '../utils/qr-processor';
 import { isSafariOrIOS, getSafariOptimizedConstraints, isMobile } from '../utils/browser-detection';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
+import { preprocessForQR } from '../utils/image-preprocessor';
 import { createCameraError } from '../constants/cameraErrors';
 import { triggerVibrate } from '../utils/vibrate';
 
@@ -42,6 +43,8 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   const tabIdRef = useRef<string>(`tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
   const useWorkerProcessingRef = useRef(false);
   const offscreenCanvasInitializedRef = useRef(false);
+  const processingTimesRef = useRef<number[]>([]);
+  const frameCountRef = useRef(0);
 
   // Initialize frame buffer if frame merging is enabled
   useEffect(() => {
@@ -101,6 +104,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         const imageBitmap = await createImageBitmap(video);
 
         // Process in worker
+        const workerStart = performance.now();
         const { results, canvasWidth, canvasHeight } = await processVideoFrame(imageBitmap, {
           enableFrameMerging,
           resolutionScale,
@@ -108,6 +112,9 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
           sharpen,
           optimizeForSafari,
         });
+        const workerElapsed = performance.now() - workerStart;
+        processingTimesRef.current = [...processingTimesRef.current.slice(-9), workerElapsed];
+        frameCountRef.current++;
 
         // Update canvas dimensions if needed (for overlay drawing)
         if (canvas.width !== canvasWidth || canvas.height !== canvasHeight) {
@@ -162,9 +169,13 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         // Get image data from canvas
         let imageData = ctx.getImageData(0, 0, scaledWidth, scaledHeight);
 
-        // Apply Safari optimization if enabled
+        // Apply pre-processing before decode:
+        // Safari path: downscale + fixed contrast (tuned for Safari rendering)
+        // Non-Safari path: adaptive contrast normalization + conditional light sharpening
         if (optimizeForSafari) {
           imageData = optimizeFrameForSafari(imageData);
+        } else {
+          imageData = preprocessForQR(imageData);
         }
 
         // Apply frame merging if enabled
@@ -177,7 +188,11 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         }
 
         // Decode QR codes
+        const mainStart = performance.now();
         const results = await decodeQRFromImageData(imageData, { crop, sharpen });
+        const mainElapsed = performance.now() - mainStart;
+        processingTimesRef.current = [...processingTimesRef.current.slice(-9), mainElapsed];
+        frameCountRef.current++;
 
         if (results.length > 0) {
           if (vibrate) {
@@ -400,8 +415,10 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     // Clear canvas context cache
     canvasContextRef.current = null;
 
-    // Reset scan time
+    // Reset scan time and performance counters
     lastScanTimeRef.current = 0;
+    processingTimesRef.current = [];
+    frameCountRef.current = 0;
   }, []);
 
   const switchCamera = useCallback(async (facingMode?: CameraFacing) => {
@@ -592,6 +609,18 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     }));
   }, []);
 
+  const getPerformanceStats = useCallback((): PerformanceStats | null => {
+    const times = processingTimesRef.current;
+    if (times.length === 0) return null;
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    return {
+      avgProcessingTime: Math.round(avg),
+      fps: avg > 0 ? Math.round(1000 / avg) : 0,
+      isUsingWorker: useWorkerProcessingRef.current,
+      frameCount: frameCountRef.current,
+    };
+  }, []);
+
   const decodeQRFromImageDataWrapper = useCallback(async (imageData: ImageData): Promise<QRCodeResult> => {
     // Initialize WASM if not already done
     if (!wasmInitializedRef.current) {
@@ -623,5 +652,6 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     turnOnFlash,
     turnOffFlash,
     decodeQRFromImageData: decodeQRFromImageDataWrapper,
+    getPerformanceStats,
   };
 }

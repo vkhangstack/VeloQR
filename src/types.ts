@@ -133,6 +133,17 @@ export interface UseQRScannerOptions {
   vibrate?: boolean; // Vibrate when QR code is detected  
 }
 
+export interface PerformanceStats {
+  /** Average frame processing time in milliseconds (rolling window of last 10 frames) */
+  avgProcessingTime: number;
+  /** Estimated frames per second based on average processing time */
+  fps: number;
+  /** Whether Web Worker + OffscreenCanvas processing is active */
+  isUsingWorker: boolean;
+  /** Total frames processed since last startScanning call */
+  frameCount: number;
+}
+
 export interface UseQRScannerReturn {
   videoRef: React.RefObject<HTMLVideoElement>;
   canvasRef: React.RefObject<HTMLCanvasElement>;
@@ -148,6 +159,8 @@ export interface UseQRScannerReturn {
   turnOnFlash: () => Promise<void>;
   turnOffFlash: () => Promise<void>;
   decodeQRFromImageData: (imageData: ImageData) => Promise<QRCodeResult>;
+  /** Returns current performance stats for the active scan session, or null if no frames processed */
+  getPerformanceStats: () => PerformanceStats | null;
 }
 
 export interface CameraDevice {
