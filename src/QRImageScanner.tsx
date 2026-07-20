@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { QRImageScannerProps, QRCodeResult } from './types';
 import { initWasm, decodeQRFromImageData } from './utils/qr-processor';
+import { detectQRNative } from './utils/native-detector';
 import { ImageProcessingAnimation } from './components/ImageProcessingAnimation';
 import { DEFAULT_TEXTS, getTextsByLanguage } from './constants/defaultTexts';
 
@@ -91,9 +92,17 @@ export const QRImageScanner: React.FC<QRImageScannerProps> = ({
 
       ctx.drawImage(img, 0, 0);
 
-      // Get image data and decode QR codes
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const qrResults = await decodeQRFromImageData(imageData);
+      // Try the native BarcodeDetector first — fast and highly sensitive on
+      // typical uploads. If it's unavailable or finds nothing, fall back to the
+      // high-quality WASM path (inverted + upscale recovery) which can still
+      // squeeze QR codes out of low-resolution or low-contrast images.
+      const nativeResults = await detectQRNative(canvas);
+      const qrResults = nativeResults && nativeResults.length > 0
+        ? nativeResults
+        : await decodeQRFromImageData(
+          ctx.getImageData(0, 0, canvas.width, canvas.height),
+          { highQuality: true }
+        );
 
       setResults(qrResults);
       onScan?.(qrResults);

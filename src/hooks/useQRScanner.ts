@@ -2,10 +2,21 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice, CameraFacingMode, CameraFacing, PerformanceStats } from '../types';
 import { initWasm, decodeQRFromImageData, supportsOffscreenCanvas, processVideoFrame, updateWorkerConfig, clearFrameBuffer } from '../utils/qr-processor';
 import { isSafariOrIOS, getSafariOptimizedConstraints, isMobile } from '../utils/browser-detection';
+import { selectBestCameraDeviceId, acquireCameraStream } from '../utils/camera-manager';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
 import { preprocessForQR } from '../utils/image-preprocessor';
 import { createCameraError } from '../constants/cameraErrors';
 import { triggerVibrate } from '../utils/vibrate';
+
+// While actively searching for the first QR (nothing detected recently), the
+// native detector runs at ~30fps so a code is caught the instant it enters the
+// frame. Once something is detected it backs off to scanDelay to avoid flooding
+// the onScan callback.
+const NATIVE_SEARCH_INTERVAL = 33;
+
+// Disable the native path after this many consecutive detect() failures and fall
+// back to WASM — guards against browsers that advertise support but throw.
+const NATIVE_MAX_FAILURES = 3;
 
 export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerReturn {
   const {
@@ -21,6 +32,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     crop,
     sharpen,
     vibrate = false,
+    autoSelectBestCamera = true,
   } = options;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -38,6 +50,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   const frameBufferRef = useRef<FrameBuffer | null>(null);
   const canvasContextRef = useRef<CanvasRenderingContext2D | null>(null);
   const lastScanTimeRef = useRef<number>(0);
+  const lastResultTimeRef = useRef<number>(0);
   const wasPausedByVisibilityRef = useRef(false);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const tabIdRef = useRef<string>(`tab-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
@@ -45,6 +58,9 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   const offscreenCanvasInitializedRef = useRef(false);
   const processingTimesRef = useRef<number[]>([]);
   const frameCountRef = useRef(0);
+  const barcodeDetectorRef = useRef<any>(null);
+  const useNativeDetectorRef = useRef(false);
+  const nativeFailuresRef = useRef(0);
 
   // Initialize frame buffer if frame merging is enabled
   useEffect(() => {
@@ -88,9 +104,17 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       return;
     }
 
-    // Throttle based on scanDelay
+    // Adaptive throttle for maximum first-detection sensitivity: while searching
+    // (nothing found in the last scanDelay window) the cheap native detector runs
+    // at ~30fps so a QR is caught the moment it enters the frame; after a hit it
+    // backs off to scanDelay to avoid flooding onScan. The heavier WASM pipeline
+    // always uses scanDelay to keep CPU bounded.
     const now = performance.now();
-    if (now - lastScanTimeRef.current < scanDelay) {
+    const searching = now - lastResultTimeRef.current >= scanDelay;
+    const effectiveDelay = useNativeDetectorRef.current
+      ? (searching ? NATIVE_SEARCH_INTERVAL : scanDelay)
+      : scanDelay;
+    if (now - lastScanTimeRef.current < effectiveDelay) {
       return;
     }
 
@@ -98,6 +122,55 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     lastScanTimeRef.current = now;
 
     try {
+      // Native path: use the browser's built-in BarcodeDetector when available.
+      // On Android Chrome this maps to the platform (ML Kit-class) detector,
+      // giving native-tier speed and sensitivity — markedly better on small,
+      // blurry, or angled QR than the WASM decoder. Skipped when crop/sharpen are
+      // set so those options keep their exact semantics via the WASM pipeline.
+      if (useNativeDetectorRef.current && barcodeDetectorRef.current && !crop && !sharpen) {
+        try {
+          const barcodes = await barcodeDetectorRef.current.detect(video);
+          nativeFailuresRef.current = 0;
+
+          // Native detection reads the video directly, so keep the overlay canvas
+          // sized to the video's intrinsic resolution — cornerPoints are in that
+          // coordinate space.
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+
+          const nativeElapsed = performance.now() - now;
+          processingTimesRef.current = [...processingTimesRef.current.slice(-9), nativeElapsed];
+          frameCountRef.current++;
+
+          if (barcodes.length > 0) {
+            const results: QRCodeResult[] = barcodes.map((b: any) => ({
+              data: b.rawValue,
+              version: 0, // BarcodeDetector does not expose QR version
+              bounds: (b.cornerPoints || []).map((p: any) => [p.x, p.y] as [number, number]),
+            }));
+            lastResultTimeRef.current = now;
+            if (vibrate) {
+              triggerVibrate();
+            }
+            setLastResults(results);
+            onScan?.(results);
+          }
+          return;
+        } catch (nativeErr) {
+          // detect() can throw transiently (frame not ready). Tolerate a few, but
+          // permanently fall back to WASM if the native detector keeps failing.
+          nativeFailuresRef.current += 1;
+          if (nativeFailuresRef.current >= NATIVE_MAX_FAILURES) {
+            useNativeDetectorRef.current = false;
+            console.warn('[useQRScanner] Native BarcodeDetector unstable, falling back to WASM');
+          } else {
+            return;
+          }
+        }
+      }
+
       // Use worker-based processing if available and OffscreenCanvas is supported
       if (useWorkerProcessingRef.current) {
         // Create ImageBitmap from video (zero-copy operation)
@@ -123,6 +196,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         }
 
         if (results.length > 0) {
+          lastResultTimeRef.current = now;
           if (vibrate) {
             triggerVibrate();
           }
@@ -195,6 +269,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         frameCountRef.current++;
 
         if (results.length > 0) {
+          lastResultTimeRef.current = now;
           if (vibrate) {
             triggerVibrate();
           }
@@ -247,34 +322,67 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
           useWorkerProcessingRef.current = false;
           console.log('[useQRScanner] OffscreenCanvas not supported - using main thread processing');
         }
+
+        // Probe for the native BarcodeDetector — near-instant, platform-backed QR
+        // detection on supported browsers (notably Android Chrome). When present
+        // it becomes the primary detector; WASM stays as the fallback.
+        try {
+          const BD = (window as any).BarcodeDetector;
+          if (BD && typeof BD.getSupportedFormats === 'function') {
+            const formats = await BD.getSupportedFormats();
+            if (formats.includes('qr_code')) {
+              barcodeDetectorRef.current = new BD({ formats: ['qr_code'] });
+              useNativeDetectorRef.current = true;
+              nativeFailuresRef.current = 0;
+              console.log('[useQRScanner] Native BarcodeDetector active');
+            }
+          }
+        } catch (bdErr) {
+          console.warn('[useQRScanner] BarcodeDetector probe failed:', bdErr);
+        }
       }
 
       const facingMode = getFacingMode(cameraFacing || preferredCamera);
 
-      // Build video constraints
+      // Build video constraints.
+      // Request a high capture resolution by default: small / high-version QR
+      // codes need enough pixels per module to be decodable, and 720p is often
+      // too coarse. The browser clamps `ideal` to the closest the device supports,
+      // and callers can still override via `videoConstraints`.
       let constraints: MediaTrackConstraints = {
         facingMode,
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
         frameRate: { ideal: 30 },
         ...videoConstraints,
       };
+
+      // Request continuous autofocus for the rear camera — the single biggest
+      // win for close-range QR on phones (many devices default to a fixed/hunting
+      // focus). Advertised as an "advanced" (best-effort) constraint so browsers
+      // that don't support it simply ignore it instead of failing.
+      if (facingMode === CameraFacingMode.ENVIRONMENT && !videoConstraints.advanced) {
+        constraints.advanced = [
+          { focusMode: 'continuous' } as MediaTrackConstraintSet,
+        ];
+      }
 
       // Apply Safari optimizations if enabled
       if (optimizeForSafari) {
         constraints = getSafariOptimizedConstraints(constraints);
       }
 
-      // Request camera access FIRST - only open camera ONCE to avoid double flash
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: constraints,
-        audio: false,
-      });
+      // Request camera access FIRST - only open camera ONCE to avoid double flash.
+      // acquireCameraStream relaxes constraints step-by-step so the camera opens
+      // on low-res webcams and restrictive browsers instead of hard-failing.
+      let stream = await acquireCameraStream(constraints);
 
       streamRef.current = stream;
 
       // Get available cameras AFTER camera is already open (no double flash)
-      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const allDevices = navigator.mediaDevices.enumerateDevices
+        ? await navigator.mediaDevices.enumerateDevices()
+        : [];
       const devices = allDevices
         .filter((device) => device.kind === 'videoinput')
         .map((device) => ({
@@ -286,8 +394,35 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       setAvailableCameras(devices);
 
       // Identify current camera
-      const videoTrack = stream.getVideoTracks()[0];
-      const settings = videoTrack.getSettings();
+      let videoTrack = stream.getVideoTracks()[0];
+      let settings = videoTrack.getSettings();
+
+      // Auto-select the best rear lens: on multi-camera phones the browser often
+      // hands back the ultra-wide lens (which cannot focus on close QR codes).
+      // If a better main lens exists, re-acquire with an exact deviceId. This only
+      // opens a second stream in the rare case the initial pick was suboptimal.
+      if (autoSelectBestCamera) {
+        const bestDeviceId = selectBestCameraDeviceId(devices, facingMode, settings.deviceId);
+        if (bestDeviceId) {
+          try {
+            const { facingMode: _omit, ...restConstraints } = constraints;
+            const betterStream = await navigator.mediaDevices.getUserMedia({
+              video: { ...restConstraints, deviceId: { exact: bestDeviceId } },
+              audio: false,
+            });
+            // Swap to the better stream and release the original.
+            stream.getTracks().forEach((track) => track.stop());
+            stream = betterStream;
+            streamRef.current = betterStream;
+            videoTrack = stream.getVideoTracks()[0];
+            settings = videoTrack.getSettings();
+          } catch (selectErr) {
+            // Keep the original stream if re-acquisition fails for any reason.
+            console.warn('[useQRScanner] Best-camera selection failed, keeping default:', selectErr);
+          }
+        }
+      }
+
       const currentCam = devices.find(d => d.deviceId === settings.deviceId);
       if (currentCam) {
         setCurrentCamera(currentCam);
@@ -378,7 +513,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       onError?.(cameraError);
       throw cameraError;
     }
-  }, [renderLoop, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode, enableFrameMerging, frameMergeCount, resolutionScale, crop, sharpen]);
+  }, [renderLoop, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode, enableFrameMerging, frameMergeCount, resolutionScale, crop, sharpen, autoSelectBestCamera]);
 
   const stopScanning = useCallback(() => {
     setIsScanning(false);
@@ -417,6 +552,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
 
     // Reset scan time and performance counters
     lastScanTimeRef.current = 0;
+    lastResultTimeRef.current = 0;
     processingTimesRef.current = [];
     frameCountRef.current = 0;
   }, []);
@@ -577,6 +713,11 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
       return false;
     }
     const videoTrack = streamRef.current.getVideoTracks()[0];
+    // getCapabilities is not implemented in every browser (e.g. Firefox) — treat
+    // its absence as "no flash" rather than throwing.
+    if (!videoTrack || typeof videoTrack.getCapabilities !== 'function') {
+      return false;
+    }
     const capabilities = videoTrack.getCapabilities();
     return 'torch' in capabilities;
   }, []);
