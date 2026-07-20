@@ -1,6 +1,7 @@
 use wasm_bindgen::prelude::*;
 use image::{GrayImage, ImageBuffer};
 use image::imageops;
+use image::imageops::FilterType;
 use image::{DynamicImage, RgbaImage};
 use rqrr::PreparedImage;
 use serde::{Deserialize, Serialize};
@@ -46,12 +47,108 @@ pub fn decode_qr_from_image(
     let gray_image = rgba_to_gray(image_data, width, height)
         .map_err(|e| JsValue::from_str(&format!("Failed to convert image: {}", e)))?;
 
-    // Prepare image for QR detection
-    let mut prepared = PreparedImage::prepare(gray_image);
+    let results = detect_with_recovery(gray_image);
 
-    // Find QR codes
+    results_to_js(&results)
+}
+
+/// High-quality decode for low-resolution / hard-to-read still images.
+///
+/// Runs the normal + inverted passes and, if those miss, retries on a 2x
+/// upscaled copy (Lanczos-style interpolation) to recover QR codes whose
+/// modules are too small for the detector at native resolution. Detected
+/// bounds are mapped back to the original image coordinate space so callers
+/// can draw overlays without adjustment.
+#[wasm_bindgen]
+pub fn decode_qr_from_image_hq(
+    image_data: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<JsValue, JsValue> {
+    let gray_image = rgba_to_gray(image_data, width, height)
+        .map_err(|e| JsValue::from_str(&format!("Failed to convert image: {}", e)))?;
+
+    // Normal + inverted passes at native resolution.
+    let mut results = detect_with_recovery(gray_image.clone());
+
+    // Progressive upscale recovery for tiny / fine-detail QR codes. Small images
+    // whose modules are only a pixel or two wide can't be resolved at native
+    // resolution; upscaling gives the detector more samples per module. We step
+    // the scale up and stop at the first factor that decodes, so the extra cost
+    // is only paid on a miss and only until something is found.
+    if results.is_empty() {
+        for scale in UPSCALE_STEPS {
+            // Skip factors that would blow past the working-size cap.
+            if width * scale > MAX_UPSCALED_DIM || height * scale > MAX_UPSCALED_DIM {
+                break;
+            }
+            results = detect_upscaled(&gray_image, width, height, scale);
+            if !results.is_empty() {
+                break;
+            }
+        }
+    }
+
+    results_to_js(&results)
+}
+
+/// Upscale factors tried, in order, when native-resolution detection misses.
+/// Ordered cheapest-first so small QR codes are recovered with the least work.
+const UPSCALE_STEPS: [u32; 3] = [2, 3, 4];
+
+/// Cap on any upscaled edge (px). Guards against multiplying an already-large
+/// image into a multi-hundred-megapixel buffer during recovery.
+const MAX_UPSCALED_DIM: u32 = 4096;
+
+/// Upscale the image by `scale`, run detection with recovery, and map any bounds
+/// back into the original coordinate space so overlays line up without callers
+/// needing to know a scale factor was applied.
+fn detect_upscaled(gray: &GrayImage, width: u32, height: u32, scale: u32) -> Vec<QRCodeResult> {
+    let upscaled = imageops::resize(
+        gray,
+        width * scale,
+        height * scale,
+        FilterType::Lanczos3,
+    );
+
+    let mut results = detect_with_recovery(upscaled);
+
+    let scale_f = scale as f64;
+    for result in &mut results {
+        for point in &mut result.bounds {
+            point.0 /= scale_f;
+            point.1 /= scale_f;
+        }
+    }
+    results
+}
+
+/// Detect + decode with a white-on-dark recovery pass.
+///
+/// Runs detection on the image as-is; if nothing decodes, retries once on the
+/// inverted image, since many low-quality / low-contrast captures come through
+/// as white-on-dark. The inverted pass only runs on a miss, so the fast path is
+/// a single detection with no extra allocation beyond the working copy.
+fn detect_with_recovery(gray_image: GrayImage) -> Vec<QRCodeResult> {
+    // `detect_and_decode` consumes the image, so keep a copy for the fallback.
+    let results = detect_and_decode(gray_image.clone());
+    if !results.is_empty() {
+        return results;
+    }
+    detect_and_decode(invert_gray(&gray_image))
+}
+
+/// Serialize decoded results into a JS value for the WASM boundary.
+fn results_to_js(results: &[QRCodeResult]) -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(results)
+        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+}
+
+/// Run QR grid detection + decoding on a prepared grayscale image.
+fn detect_and_decode(gray_image: GrayImage) -> Vec<QRCodeResult> {
+    let mut prepared = PreparedImage::prepare(gray_image);
     let grids = prepared.detect_grids();
-    console_log!("Detected {} QR codes", grids.len());
+    console_log!("Detected {} QR grids", grids.len());
 
     let mut results: Vec<QRCodeResult> = Vec::new();
 
@@ -71,41 +168,48 @@ pub fn decode_qr_from_image(
                 });
             }
             Err(_e) => {
-                console_log!("Failed to decode QR code: {:?}", _e);
+                console_log!("Failed to decode QR grid: {:?}", _e);
             }
         }
     }
 
-    serde_wasm_bindgen::to_value(&results)
-        .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    results
 }
 
-/// Convert RGBA image data to grayscale
+/// Produce an inverted copy of a grayscale image (255 - value per pixel).
+fn invert_gray(gray: &GrayImage) -> GrayImage {
+    let mut inverted = gray.clone();
+    for pixel in inverted.pixels_mut() {
+        pixel.0[0] = 255 - pixel.0[0];
+    }
+    inverted
+}
+
+/// Convert RGBA image data to grayscale.
+///
+/// Uses integer arithmetic (77·R + 150·G + 29·B) >> 8 — a fixed-point form of
+/// the 0.299/0.587/0.114 luma weights — and writes straight into the pixel
+/// buffer, avoiding per-pixel float math and bounds-checked `put_pixel` calls.
 fn rgba_to_gray(rgba: &[u8], width: u32, height: u32) -> Result<GrayImage, String> {
-    if rgba.len() != (width * height * 4) as usize {
+    let expected = (width as usize) * (height as usize) * 4;
+    if rgba.len() != expected {
         return Err(format!(
             "Invalid image data length: expected {}, got {}",
-            width * height * 4,
+            expected,
             rgba.len()
         ));
     }
 
-    let mut gray = ImageBuffer::new(width, height);
-
-    for y in 0..height {
-        for x in 0..width {
-            let idx = ((y * width + x) * 4) as usize;
-            let r = rgba[idx] as f32;
-            let g = rgba[idx + 1] as f32;
-            let b = rgba[idx + 2] as f32;
-
-            // Standard grayscale conversion formula
-            let gray_value = (0.299 * r + 0.587 * g + 0.114 * b) as u8;
-            gray.put_pixel(x, y, image::Luma([gray_value]));
-        }
+    let mut buffer: Vec<u8> = Vec::with_capacity((width as usize) * (height as usize));
+    for chunk in rgba.chunks_exact(4) {
+        let r = chunk[0] as u32;
+        let g = chunk[1] as u32;
+        let b = chunk[2] as u32;
+        buffer.push(((r * 77 + g * 150 + b * 29) >> 8) as u8);
     }
 
-    Ok(gray)
+    ImageBuffer::from_raw(width, height, buffer)
+        .ok_or_else(|| "Failed to build grayscale buffer".to_string())
 }
 
 /// Initialize the WASM module

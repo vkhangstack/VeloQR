@@ -26,6 +26,69 @@ export interface CameraCapabilities {
 }
 
 /**
+ * Acquire a camera stream with progressive constraint relaxation.
+ *
+ * Browsers and cameras honour constraints inconsistently: a low-resolution
+ * webcam, a restrictive browser, an unsupported `advanced` (e.g. focusMode)
+ * entry, or a busy device can make a fully-specified request fail with
+ * OverconstrainedError / NotReadableError. This steps down through looser
+ * constraint tiers until the camera opens, so scanning works across a wide
+ * range of devices and browsers. Permission / device-missing / insecure-context
+ * errors are surfaced immediately, since relaxing constraints won't fix them.
+ */
+export async function acquireCameraStream(
+  baseConstraints: MediaTrackConstraints
+): Promise<MediaStream> {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    throw new Error(
+      'Camera access is unavailable. getUserMedia requires a secure context (HTTPS or localhost) and a supported browser.'
+    );
+  }
+
+  // Tier 2: same request minus `advanced` (some browsers choke on unknown
+  // advanced constraints like focusMode).
+  const withoutAdvanced: MediaTrackConstraints = { ...baseConstraints };
+  delete (withoutAdvanced as { advanced?: unknown }).advanced;
+
+  // Tier 3: only the facing hint — drop all resolution/frameRate requirements so
+  // even fixed-resolution / low-res cameras qualify.
+  const facingOnly: MediaTrackConstraints = baseConstraints.facingMode
+    ? { facingMode: baseConstraints.facingMode }
+    : {};
+
+  const tiers: Array<MediaTrackConstraints | boolean> = [
+    baseConstraints,
+    withoutAdvanced,
+    facingOnly,
+    true, // Tier 4: bare minimum — accept any camera the device offers.
+  ];
+
+  let lastError: unknown;
+  for (const tier of tiers) {
+    try {
+      const video =
+        typeof tier === 'boolean' ? tier : Object.keys(tier).length > 0 ? tier : true;
+      return await navigator.mediaDevices.getUserMedia({ video, audio: false });
+    } catch (err) {
+      lastError = err;
+      const name = (err as { name?: string })?.name;
+      // Not fixable by loosening constraints — fail fast.
+      if (
+        name === 'NotAllowedError' ||
+        name === 'PermissionDeniedError' ||
+        name === 'NotFoundError' ||
+        name === 'SecurityError'
+      ) {
+        throw err;
+      }
+      // OverconstrainedError / NotReadableError / TypeError → try the next tier.
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * Get list of available camera devices
  */
 export async function getCameraDevices(): Promise<CameraDevice[]> {
@@ -120,6 +183,100 @@ export async function identifyCameras(): Promise<{
   }
 
   return { front, back, all: devices };
+}
+
+/**
+ * Label keywords that indicate a camera is NOT the ideal lens for QR scanning.
+ * Ultra-wide / telephoto / depth / macro / mono lenses either can't focus at
+ * close range or don't produce a usable RGB frame, so we push them down the
+ * ranking and prefer the plain "main" back camera instead.
+ */
+const NON_IDEAL_LENS_KEYWORDS = [
+  'ultra',
+  'wide angle',
+  'wide-angle',
+  'wide camera', // "Back Dual Wide Camera" is a fused/virtual device, less reliable focus
+  'tele',
+  'depth',
+  'macro',
+  'mono',
+  'infra',
+  ' ir ',
+  'zoom',
+  '0.5',
+];
+
+/**
+ * Score a back-facing camera by how well suited it is for QR scanning.
+ * Higher is better. The plain main lens scores highest; ultra-wide / telephoto /
+ * depth lenses are penalised. `order` (enumeration index) is used as a tie-break
+ * because browsers typically list the main camera first.
+ */
+function scoreBackCamera(device: CameraDevice, order: number): number {
+  const label = device.label.toLowerCase();
+  let score = 100;
+
+  for (const keyword of NON_IDEAL_LENS_KEYWORDS) {
+    if (label.includes(keyword.trim())) {
+      score -= 40;
+    }
+  }
+
+  // A short, unqualified label like "back camera" is usually the main lens.
+  if (/\bback camera\b/.test(label) || /\brear camera\b/.test(label)) {
+    score += 30;
+  }
+
+  // Earlier-enumerated devices are more likely to be the primary camera.
+  score -= order;
+
+  return score;
+}
+
+/**
+ * Pick the best camera deviceId for a given facing mode from an already-enumerated
+ * device list. Only re-selects for the back/environment camera (front cameras are
+ * almost always singular). Returns null when no better choice can be determined.
+ *
+ * This is label + enumeration-order based so it never has to open extra camera
+ * streams to make a decision.
+ */
+export function selectBestCameraDeviceId(
+  devices: CameraDevice[],
+  facingMode: 'user' | 'environment',
+  currentDeviceId?: string
+): string | null {
+  if (facingMode !== 'environment' || devices.length < 2) {
+    return null;
+  }
+
+  // Candidates: cameras that are not clearly front-facing.
+  const candidates = devices.filter((device) => {
+    const label = device.label.toLowerCase();
+    return !label.includes('front') && !label.includes('user') && !label.includes('face');
+  });
+
+  const pool = candidates.length > 0 ? candidates : devices;
+  if (pool.length < 2) {
+    return null;
+  }
+
+  let best: CameraDevice | null = null;
+  let bestScore = -Infinity;
+
+  for (const device of pool) {
+    const score = scoreBackCamera(device, devices.indexOf(device));
+    if (score > bestScore) {
+      bestScore = score;
+      best = device;
+    }
+  }
+
+  if (!best || best.deviceId === currentDeviceId) {
+    return null;
+  }
+
+  return best.deviceId;
 }
 
 /**

@@ -1,7 +1,7 @@
 /* VeloQR Processing Web Worker
  * author: vkhangstack
- * version: 1.2.5
- * license: MIT or Apache-2.0
+ * version: 1.3.1
+ * license: MIT
  */
 
 let wasmModule = null;
@@ -175,14 +175,20 @@ function deduplicateResults(results) {
   return unique;
 }
 
-// Decode QR from a single window (internal function)
-function decodeWindow(imageData) {
+// Decode QR from a single window (internal function).
+// When `highQuality` is set, use the WASM high-quality decode path
+// (inverted + upscale recovery for low-resolution images) if the running
+// WASM build exposes it; otherwise fall back to the standard decode.
+function decodeWindow(imageData, highQuality = false) {
   if (!isInitialized || !wasmModule) {
     throw new Error('WASM not initialized');
   }
 
   try {
     const { data, width, height } = imageData;
+    if (highQuality && typeof wasmModule.decode_qr_from_image_hq === 'function') {
+      return wasmModule.decode_qr_from_image_hq(data, width, height) || [];
+    }
     const results = wasmModule.decode_qr_from_image(data, width, height);
     return results || [];
   } catch (error) {
@@ -201,6 +207,7 @@ function decodeQRCode(
     maxWindows = 10,
     crop = null,
     sharpen = null,
+    highQuality = false,
   }
 ) {
   if (!isInitialized || !wasmModule) {
@@ -217,14 +224,14 @@ function decodeQRCode(
 
     if (!useSlidingWindow) {
       // Original behavior: decode the full image directly
-      return decodeWindow(processedImageData);
+      return decodeWindow(processedImageData, highQuality);
     }
 
     // Sliding window approach
     const allResults = [];
 
     // First, try full image
-    const fullImageResults = decodeWindow(processedImageData);
+    const fullImageResults = decodeWindow(processedImageData, highQuality);
     allResults.push(...fullImageResults);
 
     // Early exit if we found QR codes in full image (performance optimization)
@@ -244,7 +251,7 @@ function decodeQRCode(
     // Process each window
     for (const window of windows) {
       const windowImageData = extractWindow(processedImageData, window);
-      const windowResults = decodeWindow(windowImageData);
+      const windowResults = decodeWindow(windowImageData, highQuality);
 
       // Adjust bounds to global coordinates
       for (const result of windowResults) {
@@ -441,32 +448,25 @@ function upscaleImage(imageData, scaleFactor) {
   return dstCtx.getImageData(0, 0, newWidth, newHeight);
 }
 
-// Extract center crop for focusing on small QR
-function extractCenterCrop(imageData, cropRatio = 0.6) {
-  const { width, height, data } = imageData;
-  const cropWidth = Math.floor(width * cropRatio);
-  const cropHeight = Math.floor(height * cropRatio);
-  const offsetX = Math.floor((width - cropWidth) / 2);
-  const offsetY = Math.floor((height - cropHeight) / 2);
+// Generate a set of heavily-overlapping region tiles covering the whole frame.
+// Centre + four corners at 60% size guarantees that any small QR (up to ~40% of
+// the frame) falls fully inside at least one tile — unlike a single centre crop,
+// which misses off-centre codes.
+function generateRoiTiles(width, height, ratio = 0.6) {
+  const w = Math.floor(width * ratio);
+  const h = Math.floor(height * ratio);
+  const maxX = width - w;
+  const maxY = height - h;
+  const cx = Math.floor((width - w) / 2);
+  const cy = Math.floor((height - h) / 2);
 
-  const cropData = new Uint8ClampedArray(cropWidth * cropHeight * 4);
-
-  for (let y = 0; y < cropHeight; y++) {
-    for (let x = 0; x < cropWidth; x++) {
-      const srcIdx = ((y + offsetY) * width + (x + offsetX)) * 4;
-      const dstIdx = (y * cropWidth + x) * 4;
-      cropData[dstIdx] = data[srcIdx];
-      cropData[dstIdx + 1] = data[srcIdx + 1];
-      cropData[dstIdx + 2] = data[srcIdx + 2];
-      cropData[dstIdx + 3] = data[srcIdx + 3];
-    }
-  }
-
-  return {
-    imageData: new ImageData(cropData, cropWidth, cropHeight),
-    offsetX,
-    offsetY,
-  };
+  return [
+    { x: cx, y: cy, width: w, height: h },      // centre
+    { x: 0, y: 0, width: w, height: h },        // top-left
+    { x: maxX, y: 0, width: w, height: h },     // top-right
+    { x: 0, y: maxY, width: w, height: h },     // bottom-left
+    { x: maxX, y: maxY, width: w, height: h },  // bottom-right
+  ];
 }
 
 // Unsharp mask sharpening for better edge detection
@@ -692,6 +692,23 @@ function processVideoFrame(imageBitmap, config = {}) {
     // Get image data
     let imageData = offscreenContext.getImageData(0, 0, scaledWidth, scaledHeight);
 
+    // Stage 0: try the untouched frame first. A clear QR — the common case the
+    // instant a user brings a code into view — decodes immediately without paying
+    // for normalization/sharpening, minimising first-detection latency.
+    const rawResults = decodeQRCode(imageData, {
+      useSlidingWindow: false,
+      crop,
+      sharpen,
+    });
+    if (rawResults.length > 0) {
+      return {
+        success: true,
+        results: rawResults,
+        canvasWidth: scaledWidth,
+        canvasHeight: scaledHeight,
+      };
+    }
+
     // Apply pre-processing before decode attempts:
     // Safari path: downscale + fixed contrast (tuned for Safari rendering)
     // Non-Safari path: adaptive contrast normalization + conditional light sharpening
@@ -752,34 +769,52 @@ function processVideoFrame(imageBitmap, config = {}) {
       };
     }
 
-    // Stage 3: Center crop + upscale for very small QR
-    const { imageData: centerCrop, offsetX, offsetY } = extractCenterCrop(imageData, 0.5);
-    const upscaled = upscaleImage(centerCrop, 2.5);
-    const enhanced = enhanceContrast(upscaled, 1.3);
-    const sharpUpscaled = sharpenForQR(enhanced, 1.0);
+    // Stage 3: overlapping region tiles + upscale for small / off-centre QR.
+    // A single centre crop misses codes placed away from the middle, so sweep a
+    // set of overlapping tiles (centre + four corners). Each tile is upscaled so
+    // rqrr gets enough pixels per module to lock onto small, high-version codes.
+    // Only reached after Stages 1-2 miss, and the scan loop is throttled, so the
+    // extra work stays bounded.
+    const tiles = generateRoiTiles(imageData.width, imageData.height, 0.6);
+    for (const tile of tiles) {
+      const tile2d = extractWindow(imageData, tile);
+      const tileImageData = new ImageData(tile2d.data, tile2d.width, tile2d.height);
 
-    results = decodeQRCode(sharpUpscaled, {
-      useSlidingWindow: false,
-      crop: null,
-      sharpen: null,
-    });
+      // Cap the upscaled dimension so large (e.g. 1080p) frames don't blow up
+      // memory/time while still magnifying tiny codes on small frames.
+      const scale = Math.min(2.5, Math.max(1.5, 1600 / tile2d.width));
+      const upscaled = upscaleImage(tileImageData, scale);
+      const enhanced = enhanceContrast(upscaled, 1.3);
+      const sharpUpscaled = sharpenForQR(enhanced, 1.0);
 
-    // Adjust bounds back to original coordinates
-    if (results.length > 0) {
-      const scale = 2.5;
-      for (const result of results) {
-        if (result.bounds) {
-          result.bounds = result.bounds.map(([x, y]) => [
-            Math.round(x / scale + offsetX),
-            Math.round(y / scale + offsetY),
-          ]);
+      const tileResults = decodeQRCode(sharpUpscaled, {
+        useSlidingWindow: false,
+        crop: null,
+        sharpen: null,
+      });
+
+      if (tileResults.length > 0) {
+        // Map bounds from upscaled-tile space back to original coordinates.
+        for (const result of tileResults) {
+          if (result.bounds) {
+            result.bounds = result.bounds.map(([x, y]) => [
+              Math.round(x / scale + tile.x),
+              Math.round(y / scale + tile.y),
+            ]);
+          }
         }
+        return {
+          success: true,
+          results: tileResults,
+          canvasWidth: scaledWidth,
+          canvasHeight: scaledHeight,
+        };
       }
     }
 
     return {
       success: true,
-      results,
+      results: [],
       canvasWidth: scaledWidth,
       canvasHeight: scaledHeight,
     };

@@ -1,9 +1,6 @@
 import { MRZResult } from '../types';
 import { loadWasm } from './wasm-loader';
-import packageJson from '../../package.json';
 
-const PACKAGE_NAME = packageJson.name;
-const PACKAGE_VERSION = packageJson.version;
 let wasmModule: any = null;
 let lastScanTime = 0;
 const MIN_SCAN_INTERVAL = 100; // Minimum 100ms between scans

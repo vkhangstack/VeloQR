@@ -146,7 +146,7 @@ export async function initWasm(): Promise<void> {
 
 export async function decodeQRFromImageData(
   imageData: ImageData,
-  options: { crop?: any; sharpen?: number } = {}
+  options: { crop?: any; sharpen?: number; highQuality?: boolean; useSlidingWindow?: boolean } = {}
 ): Promise<QRCodeResult[]> {
   // Throttle calls to prevent overload
   const now = Date.now();
@@ -182,7 +182,7 @@ export async function decodeQRFromImageData(
 
     try {
       let { data, width, height } = imageData;
-      const { crop, sharpen } = options;
+      const { crop, sharpen, highQuality } = options;
 
       // Apply image processing if specified
       if (crop && crop.width > 0 && crop.height > 0) {
@@ -203,7 +203,11 @@ export async function decodeQRFromImageData(
         data = wasmModule.sharpen_image(data, width, height, sharpen);
       }
 
-      const results = wasmModule.decode_qr_from_image(data, width, height);
+      // High-quality path adds inverted + upscale recovery for low-res images.
+      // Fall back to the standard decode when the running WASM build predates it.
+      const results = highQuality && typeof wasmModule.decode_qr_from_image_hq === 'function'
+        ? wasmModule.decode_qr_from_image_hq(data, width, height)
+        : wasmModule.decode_qr_from_image(data, width, height);
       return results as QRCodeResult[];
     } catch (error) {
       console.error('QR decoding error:', error);

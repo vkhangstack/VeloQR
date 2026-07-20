@@ -10,6 +10,17 @@ export function crop_image(image_data: Uint8Array, width: number, height: number
 export function decode_qr_from_image(image_data: Uint8Array, width: number, height: number): any;
 
 /**
+ * High-quality decode for low-resolution / hard-to-read still images.
+ *
+ * Runs the normal + inverted passes and, if those miss, retries on a 2x
+ * upscaled copy (Lanczos-style interpolation) to recover QR codes whose
+ * modules are too small for the detector at native resolution. Detected
+ * bounds are mapped back to the original image coordinate space so callers
+ * can draw overlays without adjustment.
+ */
+export function decode_qr_from_image_hq(image_data: Uint8Array, width: number, height: number): any;
+
+/**
  * Initialize the WASM module
  */
 export function init(): void;
@@ -25,9 +36,10 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
-    readonly decode_qr_from_image: (a: number, b: number, c: number, d: number, e: number) => void;
-    readonly parse_mrz_text: (a: number, b: number, c: number) => void;
     readonly crop_image: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly decode_qr_from_image: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly decode_qr_from_image_hq: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly parse_mrz_text: (a: number, b: number, c: number) => void;
     readonly sharpen_image: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly init: () => void;
     readonly __wbindgen_add_to_stack_pointer: (a: number) => number;
