@@ -914,7 +914,7 @@ npm run release:major
 Built with:
 - [rqrr](https://github.com/WanzenBug/rqrr) - Rust QR code detection library
 - [wasm-bindgen](https://github.com/rustwasm/wasm-bindgen) - Rust/WebAssembly interop
-- [zxing-wasm]("https://github.com/Sec-ant/zxing-wasm") - ZXing-C++ WebAssembly as an ES/CJS module with types. Read or write barcodes in various JS runtimes: Web, Node.js, Bun, and Deno.
+- [zxing-wasm](https://github.com/Sec-ant/zxing-wasm) - ZXing-C++ WebAssembly as an ES/CJS module with types. Read or write barcodes in various JS runtimes: Web, Node.js, Bun, and Deno.
 
 - React - UI framework
 
