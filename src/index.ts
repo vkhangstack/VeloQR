@@ -13,7 +13,7 @@ export {
   FlashSwitchIconMinimal,
   FlashSwitchIconWithSlash,
 } from './components/FlashSwitchIcon';
-export { initWasm, decodeQRFromImageData, drawQROverlay, configureWorker, configureWorkerFromCDN, getWorkerConfig, cleanup } from './utils/qr-processor';
+export { initWasm, decodeQRFromImageData, drawQROverlay, configureWorker, configureWorkerFromCDN, configureZxing, getWorkerConfig, cleanup } from './utils/qr-processor';
 export { configureWasm, configureWasmFromCDN, resetWasm, getWasmConfig } from './utils/wasm-loader';
 export {
   DEFAULT_TEXTS,

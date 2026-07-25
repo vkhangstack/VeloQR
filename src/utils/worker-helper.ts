@@ -11,7 +11,7 @@ export class WorkerHelper {
   }>();
   private supportsOffscreenCanvas = false;
 
-  async init(workerUrl: string, wasmUrl: string, wasmJsUrl: string): Promise<void> {
+  async init(workerUrl: string, wasmUrl: string, wasmJsUrl: string, zxingUrl?: string): Promise<void> {
     if (this.worker) {
       return;
     }
@@ -103,7 +103,7 @@ export class WorkerHelper {
         this.worker.postMessage({
           type: 'init',
           id,
-          payload: { wasmUrl, wasmJsUrl }
+          payload: { wasmUrl, wasmJsUrl, zxingUrl }
         });
 
         // Timeout after 10 seconds

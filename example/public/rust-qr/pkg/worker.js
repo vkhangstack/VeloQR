@@ -1,1 +1,1077 @@
-let wasmModule=null,isInitialized=!1,offscreenCanvas=null,offscreenContext=null,frameBuffer=[],maxFrames=3,currentResolutionScale=1,currentCrop=null,currentSharpen=null,optimizeForSafari=!1;async function initializeWasm(e,t){if(isInitialized&&wasmModule)return{success:!0};try{const a=await fetch(e);if(!a.ok)throw new Error(`Failed to load WASM: ${a.status}`);const n=await a.arrayBuffer(),r=await fetch(t);if(!r.ok)throw new Error(`Failed to load WASM JS: ${r.status}`);const o=await r.text(),s=new Blob([o],{type:"application/javascript"}),i=URL.createObjectURL(s);try{return wasmModule=await import(i),await wasmModule.default(n),isInitialized=!0,URL.revokeObjectURL(i),{success:!0}}catch(e){throw URL.revokeObjectURL(i),e}}catch(e){return{success:!1,error:e.message}}}function generateSlidingWindows(e,t,a=[1,.75,.5],n=.25,r=10){const o=[];for(const s of a){const a=Math.floor(e*s),i=Math.floor(t*s),c=Math.max(1,Math.floor(a*n)),f=Math.max(1,Math.floor(i*n));for(let n=0;n<=t-i;n+=f)for(let t=0;t<=e-a;t+=c)if(o.push({x:t,y:n,width:a,height:i,scale:s}),r&&o.length>=r)return o}return o}function extractWindow(e,t){const{x:a,y:n,width:r,height:o}=t,{data:s,width:i}=e,c=new Uint8ClampedArray(r*o*4);for(let e=0;e<o;e++)for(let t=0;t<r;t++){const o=4*((n+e)*i+(a+t)),f=4*(e*r+t);c[f]=s[o],c[f+1]=s[o+1],c[f+2]=s[o+2],c[f+3]=s[o+3]}return{data:c,width:r,height:o}}function isDuplicate(e,t){if(e.data!==t.data)return!1;if(e.bounds&&t.bounds&&e.bounds.length>=4&&t.bounds.length>=4){const a={minX:Math.min(...e.bounds.map(e=>e[0])),maxX:Math.max(...e.bounds.map(e=>e[0])),minY:Math.min(...e.bounds.map(e=>e[1])),maxY:Math.max(...e.bounds.map(e=>e[1]))},n={minX:Math.min(...t.bounds.map(e=>e[0])),maxX:Math.max(...t.bounds.map(e=>e[0])),minY:Math.min(...t.bounds.map(e=>e[1])),maxY:Math.max(...t.bounds.map(e=>e[1]))},r=Math.max(0,Math.min(a.maxX,n.maxX)-Math.max(a.minX,n.minX))*Math.max(0,Math.min(a.maxY,n.maxY)-Math.max(a.minY,n.minY)),o=(a.maxX-a.minX)*(a.maxY-a.minY),s=(n.maxX-n.minX)*(n.maxY-n.minY);return r/o>.5||r/s>.5}return!0}function deduplicateResults(e){const t=[];for(const a of e){!t.some(e=>isDuplicate(e,a))&&t.push(a)}return t}function decodeWindow(e,t=!1){if(!isInitialized||!wasmModule)throw new Error("WASM not initialized");try{const{data:a,width:n,height:r}=e;if(t&&"function"==typeof wasmModule.decode_qr_from_image_hq)return wasmModule.decode_qr_from_image_hq(a,n,r)||[];return wasmModule.decode_qr_from_image(a,n,r)||[]}catch(e){return[]}}function decodeQRCode(e,{useSlidingWindow:t=!0,scales:a=[1,.75,.5],stride:n=.25,maxWindows:r=10,crop:o=null,sharpen:s=null,highQuality:i=!1}){if(!isInitialized||!wasmModule)throw new Error("WASM not initialized");try{let c=e;if((o||s)&&(c=processImage(e,{crop:o,sharpen:s})),!t)return decodeWindow(c,i);const f=[],h=decodeWindow(c,i);if(f.push(...h),h.length>0)return h;const d=generateSlidingWindows(c.width,c.height,a,n,r);for(const e of d){const t=decodeWindow(extractWindow(c,e),i);for(const a of t)a.bounds&&(a.bounds=a.bounds.map(([t,a])=>[t+e.x,a+e.y])),f.push(a);if(t.length>0)break}return deduplicateResults(f)}catch(e){return[]}}function processImage(e,{crop:t,sharpen:a}){let{data:n,width:r,height:o}=e;try{if(t&&t.width>0&&t.height>0){n=wasmModule.crop_image(n,r,o,t.x,t.y,t.width,t.height),r=t.width,o=t.height}if(a&&a>0){n=wasmModule.sharpen_image(n,r,o,a)}return{data:n,width:r,height:o}}catch(t){return e}}function extractMRZ(e){if(!isInitialized||!wasmModule)throw new Error("WASM not initialized");try{return wasmModule.parse_mrz_text(e)||{}}catch(e){return{}}}function createOffscreenCanvas(e,t){try{if("undefined"==typeof OffscreenCanvas)throw new Error("OffscreenCanvas not supported");return offscreenCanvas=new OffscreenCanvas(e,t),offscreenContext=offscreenCanvas.getContext("2d",{alpha:!1,desynchronized:!0,willReadFrequently:!0}),{success:!0}}catch(e){return{success:!1,error:e.message}}}function updateCanvasConfig(e){if(e.createCanvas&&e.canvasWidth&&e.canvasHeight){const t=createOffscreenCanvas(e.canvasWidth,e.canvasHeight);if(!t.success)throw new Error(t.error)}void 0!==e.resolutionScale&&(currentResolutionScale=e.resolutionScale),void 0!==e.crop&&(currentCrop=e.crop),void 0!==e.sharpen&&(currentSharpen=e.sharpen),void 0!==e.enableFrameMerging&&(e.enableFrameMerging&&e.frameMergeCount?maxFrames=e.frameMergeCount:e.enableFrameMerging||(frameBuffer=[])),void 0!==e.optimizeForSafari&&(optimizeForSafari=e.optimizeForSafari)}function addFrameToBuffer(e){frameBuffer.push(e),frameBuffer.length>maxFrames&&frameBuffer.shift()}function getMergedFrame(){if(0===frameBuffer.length)return null;if(1===frameBuffer.length)return frameBuffer[0];const{width:e,height:t}=frameBuffer[0],a=new ImageData(e,t),n=frameBuffer.length;for(let e=0;e<a.data.length;e++){let t=0;for(let a=0;a<n;a++)t+=frameBuffer[a].data[e];a.data[e]=Math.round(t/n)}return a}function upscaleImage(e,t){const{width:a,height:n}=e,r=Math.floor(a*t),o=Math.floor(n*t),s=new OffscreenCanvas(a,n),i=s.getContext("2d");if(!i)return e;i.putImageData(e,0,0);const c=new OffscreenCanvas(r,o).getContext("2d");return c?(c.imageSmoothingEnabled=!0,c.imageSmoothingQuality="high",c.drawImage(s,0,0,a,n,0,0,r,o),c.getImageData(0,0,r,o)):e}function generateRoiTiles(e,t,a=.6){const n=Math.floor(e*a),r=Math.floor(t*a),o=e-n,s=t-r;return[{x:Math.floor((e-n)/2),y:Math.floor((t-r)/2),width:n,height:r},{x:0,y:0,width:n,height:r},{x:o,y:0,width:n,height:r},{x:0,y:s,width:n,height:r},{x:o,y:s,width:n,height:r}]}function sharpenForQR(e,t=1.5){const{width:a,height:n,data:r}=e,o=new ImageData(a,n),s=o.data,i=[0,-t,0,-t,1+4*t,-t,0,-t,0];for(let e=1;e<n-1;e++)for(let t=1;t<a-1;t++){for(let n=0;n<3;n++){let o=0,c=0;for(let s=-1;s<=1;s++)for(let f=-1;f<=1;f++){o+=r[4*((e+s)*a+(t+f))+n]*i[c++]}s[4*(e*a+t)+n]=Math.max(0,Math.min(255,Math.round(o)))}s[4*(e*a+t)+3]=255}for(let e=0;e<a;e++){const t=4*e,o=4*((n-1)*a+e);for(let e=0;e<4;e++)s[t+e]=r[t+e],s[o+e]=r[o+e]}for(let e=1;e<n-1;e++){const t=e*a*4,n=4*(e*a+a-1);for(let e=0;e<4;e++)s[t+e]=r[t+e],s[n+e]=r[n+e]}return o}function enhanceContrast(e,t=1.4){const{width:a,height:n,data:r}=e,o=new ImageData(a,n),s=o.data,i=128*(1-t);for(let e=0;e<r.length;e+=4)s[e]=Math.max(0,Math.min(255,r[e]*t+i)),s[e+1]=Math.max(0,Math.min(255,r[e+1]*t+i)),s[e+2]=Math.max(0,Math.min(255,r[e+2]*t+i)),s[e+3]=r[e+3];return o}function optimizeFrameForSafari(e){const{width:t,height:a,data:n}=e,r=Math.floor(.75*t),o=Math.floor(.75*a),s=new OffscreenCanvas(r,o).getContext("2d");if(!s)return e;const i=new OffscreenCanvas(t,a),c=i.getContext("2d");if(!c)return e;c.putImageData(e,0,0),s.imageSmoothingEnabled=!0,s.imageSmoothingQuality="high",s.drawImage(i,0,0,t,a,0,0,r,o);const f=s.getImageData(0,0,r,o),h=new ImageData(r,o),d=h.data,u=f.data,l=1.5;for(let e=0;e<u.length;e+=4)d[e]=Math.max(0,Math.min(255,u[e]*l-64)),d[e+1]=Math.max(0,Math.min(255,u[e+1]*l-64)),d[e+2]=Math.max(0,Math.min(255,u[e+2]*l-64)),d[e+3]=u[e+3];return h}function adaptiveNormalize(e){const{width:t,height:a,data:n}=e,r=t*a,o=new Int32Array(256);for(let e=0;e<n.length;e+=4)o[77*n[e]+150*n[e+1]+29*n[e+2]>>8]++;const s=.02*r,i=.98*r;let c=0,f=255,h=0;for(let e=0;e<256;e++)h+=o[e],h<=s&&(c=e),h<=i&&(f=e);if(f<=c+4)return e;const d=255/(f-c),u=new ImageData(t,a),l=u.data;for(let e=0;e<n.length;e+=4)l[e]=(n[e]-c)*d,l[e+1]=(n[e+1]-c)*d,l[e+2]=(n[e+2]-c)*d,l[e+3]=n[e+3];return u}function estimateBlur(e){const{width:t,height:a,data:n}=e;let r=0,o=0,s=0;for(let e=1;e<a-1;e+=4)for(let a=1;a<t-1;a+=4){const i=4*(e*t+a),c=i-4*t,f=i+4*t,h=77*n[i]+150*n[i+1]+29*n[i+2]>>8,d=77*n[c]+150*n[c+1]+29*n[c+2]>>8,u=77*n[f]+150*n[f+1]+29*n[f+2]>>8,l=77*n[i-4]+150*n[i-3]+29*n[i-2]>>8,m=77*n[i+4]+150*n[i+5]+29*n[i+6]>>8,g=Math.abs(4*h-d-u-l-m);r+=g,o+=g*g,s++}if(0===s)return 0;const i=r/s;return o/s-i*i}function processVideoFrame(e,t={}){if(!offscreenCanvas||!offscreenContext)throw new Error("OffscreenCanvas not initialized");const a=t.enableFrameMerging||!1,n=void 0!==t.resolutionScale?t.resolutionScale:currentResolutionScale,r=void 0!==t.crop?t.crop:currentCrop,o=void 0!==t.sharpen?t.sharpen:currentSharpen,s=void 0!==t.optimizeForSafari?t.optimizeForSafari:optimizeForSafari;try{const t=Math.floor(e.width*n),i=Math.floor(e.height*n);offscreenCanvas.width===t&&offscreenCanvas.height===i||(offscreenCanvas.width=t,offscreenCanvas.height=i),1!==n&&(offscreenContext.imageSmoothingEnabled=!0,offscreenContext.imageSmoothingQuality="high"),offscreenContext.drawImage(e,0,0,t,i);let c=offscreenContext.getImageData(0,0,t,i);const f=decodeQRCode(c,{useSlidingWindow:!1,crop:r,sharpen:o});if(f.length>0)return{success:!0,results:f,canvasWidth:t,canvasHeight:i};if(s?c=optimizeFrameForSafari(c):(c=adaptiveNormalize(c),estimateBlur(c)<50&&(c=sharpenForQR(c,.6))),a){addFrameToBuffer(c);const e=getMergedFrame();e&&(c=e)}let h=[];if(h=decodeQRCode(c,{useSlidingWindow:!1,crop:r,sharpen:o}),h.length>0)return{success:!0,results:h,canvasWidth:t,canvasHeight:i};if(h=decodeQRCode(sharpenForQR(c,1.2),{useSlidingWindow:!0,scales:[1,.8],stride:.3,maxWindows:6,crop:r,sharpen:null}),h.length>0)return{success:!0,results:h,canvasWidth:t,canvasHeight:i};const d=generateRoiTiles(c.width,c.height,.6);for(const e of d){const a=extractWindow(c,e),n=new ImageData(a.data,a.width,a.height),r=Math.min(2.5,Math.max(1.5,1600/a.width)),o=enhanceContrast(upscaleImage(n,r),1.3),s=decodeQRCode(sharpenForQR(o,1),{useSlidingWindow:!1,crop:null,sharpen:null});if(s.length>0){for(const t of s)t.bounds&&(t.bounds=t.bounds.map(([t,a])=>[Math.round(t/r+e.x),Math.round(a/r+e.y)]));return{success:!0,results:s,canvasWidth:t,canvasHeight:i}}}return{success:!0,results:[],canvasWidth:t,canvasHeight:i}}catch(e){return{success:!1,error:e.message,results:[]}}}self.onmessage=async function(e){const{type:t,id:a,payload:n}=e.data;try{switch(t){case"init":{const e=await initializeWasm(n.wasmUrl,n.wasmJsUrl);self.postMessage({type:"init-response",id:a,success:e.success,error:e.error});break}case"update-config":updateCanvasConfig(n),self.postMessage({type:"update-config-response",id:a,success:!0});break;case"process-frame":{const{imageBitmap:e,config:t}=n,r=processVideoFrame(e,t);self.postMessage({type:"process-frame-response",id:a,success:r.success,results:r.results,canvasWidth:r.canvasWidth,canvasHeight:r.canvasHeight,error:r.error});break}case"decode":{const{imageData:e,...t}=n,r=decodeQRCode(e,t);self.postMessage({type:"decode-response",id:a,results:r});break}case"clear-buffer":frameBuffer=[],self.postMessage({type:"clear-buffer-response",id:a,success:!0});break;case"terminate":wasmModule=null,isInitialized=!1,offscreenCanvas=null,offscreenContext=null,frameBuffer=[],self.close()}}catch(e){self.postMessage({type:t+"-error",id:a,error:e.message})}};
+/* VeloQR Processing Web Worker
+ * author: vkhangstack
+ * version: 1.3.1
+ * license: MIT
+ */
+
+let wasmModule = null;
+let isInitialized = false;
+let offscreenCanvas = null;
+let offscreenContext = null;
+let frameBuffer = [];
+let maxFrames = 3;
+let currentResolutionScale = 1;
+let currentCrop = null;
+let currentSharpen = null;
+let optimizeForSafari = false;
+
+// ZXing-WASM state. Loaded lazily (and only once) via dynamic import — the
+// same mechanism initializeWasm() below uses for the custom Rust WASM, which
+// works inside a classic (non-module) Worker because dynamic import() is a
+// runtime feature independent of the worker's script type.
+const ZXING_WASM_VERSION = "3.1.2";
+const DEFAULT_ZXING_URL = `https://cdn.jsdelivr.net/npm/zxing-wasm@${ZXING_WASM_VERSION}/dist/es/reader/index.js`;
+let zxingUrl = null;
+let zxingModule = null;
+let zxingLoadPromise = null;
+let zxingLoadFailed = false;
+
+// Lazily loads zxing-wasm's ESM reader build. Its own WASM binary is fetched
+// from jsDelivr by the module itself (no extra wiring needed on our side).
+// Returns null (never throws) on failure so callers can treat it as "ZXing
+// unavailable" and keep relying on the Rust decoder alone.
+function loadZXing() {
+	if (zxingModule) return Promise.resolve(zxingModule);
+	if (zxingLoadFailed) return Promise.resolve(null);
+	if (!zxingLoadPromise) {
+		zxingLoadPromise = import(zxingUrl || DEFAULT_ZXING_URL)
+			.then((mod) => {
+				zxingModule = mod;
+				console.log("[Worker] ZXing-WASM loaded successfully");
+				return mod;
+			})
+			.catch((error) => {
+				console.warn(
+					"[Worker] ZXing-WASM failed to load, continuing without it:",
+					error.message,
+				);
+				zxingLoadFailed = true;
+				return null;
+			});
+	}
+	return zxingLoadPromise;
+}
+
+// Supplementary decoder used as a last resort after the Rust pipeline's
+// stages all miss. ZXing-cpp's binarizer and built-in rotate/invert handling
+// catch codes the primary decoder misses — most valuable on Safari/iOS,
+// which lack a native BarcodeDetector. Never throws: any failure (load or
+// decode) resolves to an empty array, identical in shape to "no QR found".
+async function decodeWithZXing(imageData) {
+	try {
+		const mod = await loadZXing();
+		if (!mod) return [];
+		const results = await mod.readBarcodes(imageData, { formats: ["QRCode"] });
+		return results
+			.filter((r) => r.isValid && r.format === "QRCode" && r.text)
+			.map((r) => ({
+				data: r.text,
+				version: 0,
+				bounds: r.position
+					? [
+							[r.position.topLeft.x, r.position.topLeft.y],
+							[r.position.topRight.x, r.position.topRight.y],
+							[r.position.bottomRight.x, r.position.bottomRight.y],
+							[r.position.bottomLeft.x, r.position.bottomLeft.y],
+						]
+					: [],
+			}));
+	} catch (error) {
+		console.warn("[Worker] ZXing-WASM decode error:", error.message);
+		return [];
+	}
+}
+
+// Load and initialize WASM module
+async function initializeWasm(wasmUrl, wasmJsUrl, zxingUrlOverride) {
+	if (zxingUrlOverride) {
+		zxingUrl = zxingUrlOverride;
+	}
+
+	if (isInitialized && wasmModule) {
+		return { success: true };
+	}
+
+	try {
+		// Fetch WASM binary
+		const wasmResponse = await fetch(wasmUrl);
+		if (!wasmResponse.ok) {
+			throw new Error(`Failed to load WASM: ${wasmResponse.status}`);
+		}
+		const wasmBytes = await wasmResponse.arrayBuffer();
+
+		// Fetch JS wrapper
+		const jsResponse = await fetch(wasmJsUrl);
+		if (!jsResponse.ok) {
+			throw new Error(`Failed to load WASM JS: ${jsResponse.status}`);
+		}
+		const jsCode = await jsResponse.text();
+
+		// Load WASM module using dynamic import
+		const blob = new Blob([jsCode], { type: "application/javascript" });
+		const blobUrl = URL.createObjectURL(blob);
+
+		try {
+			wasmModule = await import(blobUrl);
+			await wasmModule.default(wasmBytes);
+			isInitialized = true;
+			URL.revokeObjectURL(blobUrl);
+
+			console.log("[Worker] WASM initialized successfully");
+
+			// Warm up ZXing-WASM in the background. Not awaited: failures are
+			// non-fatal and must never block the primary decoder from becoming
+			// ready.
+			loadZXing();
+
+			return { success: true };
+		} catch (err) {
+			URL.revokeObjectURL(blobUrl);
+			throw err;
+		}
+	} catch (error) {
+		console.error("[Worker] Initialization error:", error);
+		return { success: false, error: error.message };
+	}
+}
+
+// Generate sliding windows at different scales and positions
+function generateSlidingWindows(
+	imageWidth,
+	imageHeight,
+	scales = [1.0, 0.75, 0.5],
+	stride = 0.25,
+	maxWindows = 10,
+) {
+	const windows = [];
+
+	for (const scale of scales) {
+		const windowWidth = Math.floor(imageWidth * scale);
+		const windowHeight = Math.floor(imageHeight * scale);
+
+		const stepX = Math.max(1, Math.floor(windowWidth * stride));
+		const stepY = Math.max(1, Math.floor(windowHeight * stride));
+
+		for (let y = 0; y <= imageHeight - windowHeight; y += stepY) {
+			for (let x = 0; x <= imageWidth - windowWidth; x += stepX) {
+				windows.push({
+					x,
+					y,
+					width: windowWidth,
+					height: windowHeight,
+					scale,
+				});
+
+				// Limit number of windows for performance on mobile
+				if (maxWindows && windows.length >= maxWindows) {
+					return windows;
+				}
+			}
+		}
+	}
+
+	return windows;
+}
+
+// Extract a window region from ImageData
+function extractWindow(imageData, window) {
+	const { x, y, width, height } = window;
+	const { data: srcData, width: srcWidth } = imageData;
+
+	const windowData = new Uint8ClampedArray(width * height * 4);
+
+	for (let row = 0; row < height; row++) {
+		for (let col = 0; col < width; col++) {
+			const srcX = x + col;
+			const srcY = y + row;
+			const srcIndex = (srcY * srcWidth + srcX) * 4;
+			const dstIndex = (row * width + col) * 4;
+
+			windowData[dstIndex] = srcData[srcIndex];
+			windowData[dstIndex + 1] = srcData[srcIndex + 1];
+			windowData[dstIndex + 2] = srcData[srcIndex + 2];
+			windowData[dstIndex + 3] = srcData[srcIndex + 3];
+		}
+	}
+
+	return {
+		data: windowData,
+		width,
+		height,
+	};
+}
+
+// Check if two QR results are duplicates based on content and position overlap
+function isDuplicate(result1, result2) {
+	// Same content is a strong indicator
+	if (result1.data !== result2.data) {
+		return false;
+	}
+
+	// If we have bounds, check for spatial overlap
+	if (
+		result1.bounds &&
+		result2.bounds &&
+		result1.bounds.length >= 4 &&
+		result2.bounds.length >= 4
+	) {
+		// Calculate bounding boxes
+		const bbox1 = {
+			minX: Math.min(...result1.bounds.map((p) => p[0])),
+			maxX: Math.max(...result1.bounds.map((p) => p[0])),
+			minY: Math.min(...result1.bounds.map((p) => p[1])),
+			maxY: Math.max(...result1.bounds.map((p) => p[1])),
+		};
+
+		const bbox2 = {
+			minX: Math.min(...result2.bounds.map((p) => p[0])),
+			maxX: Math.max(...result2.bounds.map((p) => p[0])),
+			minY: Math.min(...result2.bounds.map((p) => p[1])),
+			maxY: Math.max(...result2.bounds.map((p) => p[1])),
+		};
+
+		// Calculate overlap
+		const overlapX = Math.max(
+			0,
+			Math.min(bbox1.maxX, bbox2.maxX) - Math.max(bbox1.minX, bbox2.minX),
+		);
+		const overlapY = Math.max(
+			0,
+			Math.min(bbox1.maxY, bbox2.maxY) - Math.max(bbox1.minY, bbox2.minY),
+		);
+		const overlapArea = overlapX * overlapY;
+
+		const area1 = (bbox1.maxX - bbox1.minX) * (bbox1.maxY - bbox1.minY);
+		const area2 = (bbox2.maxX - bbox2.minX) * (bbox2.maxY - bbox2.minY);
+
+		// Consider duplicate if overlap is > 50% of either area
+		const overlapRatio1 = overlapArea / area1;
+		const overlapRatio2 = overlapArea / area2;
+
+		return overlapRatio1 > 0.5 || overlapRatio2 > 0.5;
+	}
+
+	// If no bounds, just check content equality
+	return true;
+}
+
+// Deduplicate QR results
+function deduplicateResults(results) {
+	const unique = [];
+
+	for (const result of results) {
+		const isUnique = !unique.some((existing) => isDuplicate(existing, result));
+		if (isUnique) {
+			unique.push(result);
+		}
+	}
+
+	return unique;
+}
+
+// Decode QR from a single window (internal function).
+// When `highQuality` is set, use the WASM high-quality decode path
+// (inverted + upscale recovery for low-resolution images) if the running
+// WASM build exposes it; otherwise fall back to the standard decode.
+function decodeWindow(imageData, highQuality = false) {
+	if (!isInitialized || !wasmModule) {
+		throw new Error("WASM not initialized");
+	}
+
+	try {
+		const { data, width, height } = imageData;
+		if (
+			highQuality &&
+			typeof wasmModule.decode_qr_from_image_hq === "function"
+		) {
+			return wasmModule.decode_qr_from_image_hq(data, width, height) || [];
+		}
+		const results = wasmModule.decode_qr_from_image(data, width, height);
+		return results || [];
+	} catch (error) {
+		console.error("[Worker] Decode window error:", error);
+		return [];
+	}
+}
+
+// Decode QR codes from image data with optional sliding window
+function decodeQRCode(
+	imageData,
+	{
+		useSlidingWindow = true,
+		scales = [1.0, 0.75, 0.5],
+		stride = 0.25,
+		maxWindows = 10,
+		crop = null,
+		sharpen = null,
+		highQuality = false,
+	},
+) {
+	if (!isInitialized || !wasmModule) {
+		throw new Error("WASM not initialized");
+	}
+
+	try {
+		let processedImageData = imageData;
+
+		// Apply image processing if specified
+		if (crop || sharpen) {
+			processedImageData = processImage(imageData, { crop, sharpen });
+		}
+
+		if (!useSlidingWindow) {
+			// Original behavior: decode the full image directly
+			return decodeWindow(processedImageData, highQuality);
+		}
+
+		// Sliding window approach
+		const allResults = [];
+
+		// First, try full image
+		const fullImageResults = decodeWindow(processedImageData, highQuality);
+		allResults.push(...fullImageResults);
+
+		// Early exit if we found QR codes in full image (performance optimization)
+		if (fullImageResults.length > 0) {
+			return fullImageResults;
+		}
+
+		// Generate windows only if full image scan failed
+		const windows = generateSlidingWindows(
+			processedImageData.width,
+			processedImageData.height,
+			scales,
+			stride,
+			maxWindows,
+		);
+
+		// Process each window
+		for (const window of windows) {
+			const windowImageData = extractWindow(processedImageData, window);
+			const windowResults = decodeWindow(windowImageData, highQuality);
+
+			// Adjust bounds to global coordinates
+			for (const result of windowResults) {
+				if (result.bounds) {
+					result.bounds = result.bounds.map(([x, y]) => [
+						x + window.x,
+						y + window.y,
+					]);
+				}
+				allResults.push(result);
+			}
+
+			// Early exit immediately when we find QR codes
+			if (windowResults.length > 0) {
+				break;
+			}
+		}
+
+		// Deduplicate results
+		return deduplicateResults(allResults);
+	} catch (error) {
+		console.error("[Worker] Decode error:", error);
+		return [];
+	}
+}
+
+// Apply image processing (crop, sharpen)
+function processImage(imageData, { crop, sharpen }) {
+	let { data, width, height } = imageData;
+
+	try {
+		// Apply cropping
+		if (crop && crop.width > 0 && crop.height > 0) {
+			console.log("[Worker] Cropping image:", crop);
+			const croppedData = wasmModule.crop_image(
+				data,
+				width,
+				height,
+				crop.x,
+				crop.y,
+				crop.width,
+				crop.height,
+			);
+			data = croppedData;
+			width = crop.width;
+			height = crop.height;
+		}
+
+		// Apply sharpening
+		if (sharpen && sharpen > 0) {
+			console.log("[Worker] Sharpening image, amount:", sharpen);
+			const sharpenedData = wasmModule.sharpen_image(
+				data,
+				width,
+				height,
+				sharpen,
+			);
+			data = sharpenedData;
+		}
+
+		return { data, width, height };
+	} catch (error) {
+		console.error("[Worker] Image processing error:", error);
+		// Return original image data if processing fails
+		return imageData;
+	}
+}
+
+// Extract MRZ from image data
+function extractMRZ(textData) {
+	if (!isInitialized || !wasmModule) {
+		throw new Error("WASM not initialized");
+	}
+
+	try {
+		const results = wasmModule.parse_mrz_text(textData);
+		return results || {};
+	} catch (error) {
+		console.error("[Worker] MRZ extraction error:", error);
+		return {};
+	}
+}
+
+// Create OffscreenCanvas in worker
+function createOffscreenCanvas(width, height) {
+	try {
+		if (typeof OffscreenCanvas === "undefined") {
+			throw new Error("OffscreenCanvas not supported");
+		}
+
+		offscreenCanvas = new OffscreenCanvas(width, height);
+		offscreenContext = offscreenCanvas.getContext("2d", {
+			alpha: false,
+			desynchronized: true,
+			willReadFrequently: true,
+		});
+
+		console.log("[Worker] OffscreenCanvas created:", width, "x", height);
+		return { success: true };
+	} catch (error) {
+		console.error("[Worker] OffscreenCanvas creation error:", error);
+		return { success: false, error: error.message };
+	}
+}
+
+// Update canvas configuration
+function updateCanvasConfig(config) {
+	// Create canvas if requested
+	if (config.createCanvas && config.canvasWidth && config.canvasHeight) {
+		const result = createOffscreenCanvas(
+			config.canvasWidth,
+			config.canvasHeight,
+		);
+		if (!result.success) {
+			throw new Error(result.error);
+		}
+	}
+
+	// Update configuration
+	if (config.resolutionScale !== undefined) {
+		currentResolutionScale = config.resolutionScale;
+	}
+	if (config.crop !== undefined) {
+		currentCrop = config.crop;
+	}
+	if (config.sharpen !== undefined) {
+		currentSharpen = config.sharpen;
+	}
+	if (config.enableFrameMerging !== undefined) {
+		if (config.enableFrameMerging && config.frameMergeCount) {
+			maxFrames = config.frameMergeCount;
+		} else if (!config.enableFrameMerging) {
+			frameBuffer = [];
+		}
+	}
+	if (config.optimizeForSafari !== undefined) {
+		optimizeForSafari = config.optimizeForSafari;
+	}
+	console.log("[Worker] Canvas config updated:", config);
+}
+
+// Add frame to buffer for merging
+function addFrameToBuffer(imageData) {
+	frameBuffer.push(imageData);
+	if (frameBuffer.length > maxFrames) {
+		frameBuffer.shift();
+	}
+}
+
+// Merge frames in buffer
+function getMergedFrame() {
+	if (frameBuffer.length === 0) {
+		return null;
+	}
+
+	if (frameBuffer.length === 1) {
+		return frameBuffer[0];
+	}
+
+	const { width, height } = frameBuffer[0];
+	const merged = new ImageData(width, height);
+	const frameCount = frameBuffer.length;
+
+	// Average pixel values across all frames
+	for (let i = 0; i < merged.data.length; i++) {
+		let sum = 0;
+		for (let f = 0; f < frameCount; f++) {
+			sum += frameBuffer[f].data[i];
+		}
+		merged.data[i] = Math.round(sum / frameCount);
+	}
+
+	return merged;
+}
+
+// Bilinear upscale for small QR codes (zoom in)
+function upscaleImage(imageData, scaleFactor) {
+	const { width, height } = imageData;
+	const newWidth = Math.floor(width * scaleFactor);
+	const newHeight = Math.floor(height * scaleFactor);
+
+	const srcCanvas = new OffscreenCanvas(width, height);
+	const srcCtx = srcCanvas.getContext("2d");
+	if (!srcCtx) return imageData;
+
+	srcCtx.putImageData(imageData, 0, 0);
+
+	const dstCanvas = new OffscreenCanvas(newWidth, newHeight);
+	const dstCtx = dstCanvas.getContext("2d");
+	if (!dstCtx) return imageData;
+
+	// Use bicubic-like interpolation for better quality
+	dstCtx.imageSmoothingEnabled = true;
+	dstCtx.imageSmoothingQuality = "high";
+	dstCtx.drawImage(srcCanvas, 0, 0, width, height, 0, 0, newWidth, newHeight);
+
+	return dstCtx.getImageData(0, 0, newWidth, newHeight);
+}
+
+// Generate a set of heavily-overlapping region tiles covering the whole frame.
+// Centre + four corners at 60% size guarantees that any small QR (up to ~40% of
+// the frame) falls fully inside at least one tile — unlike a single centre crop,
+// which misses off-centre codes.
+function generateRoiTiles(width, height, ratio = 0.6) {
+	const w = Math.floor(width * ratio);
+	const h = Math.floor(height * ratio);
+	const maxX = width - w;
+	const maxY = height - h;
+	const cx = Math.floor((width - w) / 2);
+	const cy = Math.floor((height - h) / 2);
+
+	return [
+		{ x: cx, y: cy, width: w, height: h }, // centre
+		{ x: 0, y: 0, width: w, height: h }, // top-left
+		{ x: maxX, y: 0, width: w, height: h }, // top-right
+		{ x: 0, y: maxY, width: w, height: h }, // bottom-left
+		{ x: maxX, y: maxY, width: w, height: h }, // bottom-right
+	];
+}
+
+// Unsharp mask sharpening for better edge detection
+function sharpenForQR(imageData, amount = 1.5) {
+	const { width, height, data } = imageData;
+	const result = new ImageData(width, height);
+	const resultData = result.data;
+
+	// Laplacian kernel for edge enhancement
+	const kernel = [
+		0,
+		-amount,
+		0,
+		-amount,
+		1 + 4 * amount,
+		-amount,
+		0,
+		-amount,
+		0,
+	];
+
+	// Process inner pixels
+	for (let y = 1; y < height - 1; y++) {
+		for (let x = 1; x < width - 1; x++) {
+			for (let c = 0; c < 3; c++) {
+				let sum = 0;
+				let ki = 0;
+				for (let ky = -1; ky <= 1; ky++) {
+					for (let kx = -1; kx <= 1; kx++) {
+						const idx = ((y + ky) * width + (x + kx)) * 4 + c;
+						sum += data[idx] * kernel[ki++];
+					}
+				}
+				const idx = (y * width + x) * 4 + c;
+				resultData[idx] = Math.max(0, Math.min(255, Math.round(sum)));
+			}
+			resultData[(y * width + x) * 4 + 3] = 255;
+		}
+	}
+
+	// Copy border pixels
+	for (let x = 0; x < width; x++) {
+		const topIdx = x * 4;
+		const bottomIdx = ((height - 1) * width + x) * 4;
+		for (let c = 0; c < 4; c++) {
+			resultData[topIdx + c] = data[topIdx + c];
+			resultData[bottomIdx + c] = data[bottomIdx + c];
+		}
+	}
+	for (let y = 1; y < height - 1; y++) {
+		const leftIdx = y * width * 4;
+		const rightIdx = (y * width + width - 1) * 4;
+		for (let c = 0; c < 4; c++) {
+			resultData[leftIdx + c] = data[leftIdx + c];
+			resultData[rightIdx + c] = data[rightIdx + c];
+		}
+	}
+
+	return result;
+}
+
+// Enhance contrast for better QR detection
+function enhanceContrast(imageData, factor = 1.4) {
+	const { width, height, data } = imageData;
+	const result = new ImageData(width, height);
+	const resultData = result.data;
+
+	const intercept = 128 * (1 - factor);
+
+	for (let i = 0; i < data.length; i += 4) {
+		resultData[i] = Math.max(0, Math.min(255, data[i] * factor + intercept));
+		resultData[i + 1] = Math.max(
+			0,
+			Math.min(255, data[i + 1] * factor + intercept),
+		);
+		resultData[i + 2] = Math.max(
+			0,
+			Math.min(255, data[i + 2] * factor + intercept),
+		);
+		resultData[i + 3] = data[i + 3];
+	}
+
+	return result;
+}
+
+// Safari-specific optimization
+function optimizeFrameForSafari(imageData) {
+	const { width, height, data } = imageData;
+
+	// Downscale to 0.75
+	const scale = 0.75;
+	const newWidth = Math.floor(width * scale);
+	const newHeight = Math.floor(height * scale);
+
+	// Use OffscreenCanvas for scaling if available
+	const tempCanvas = new OffscreenCanvas(newWidth, newHeight);
+	const tempCtx = tempCanvas.getContext("2d");
+
+	if (!tempCtx) {
+		return imageData;
+	}
+
+	// Create temporary canvas with original size
+	const srcCanvas = new OffscreenCanvas(width, height);
+	const srcCtx = srcCanvas.getContext("2d");
+
+	if (!srcCtx) {
+		return imageData;
+	}
+
+	srcCtx.putImageData(imageData, 0, 0);
+
+	// Draw scaled down with high quality
+	tempCtx.imageSmoothingEnabled = true;
+	tempCtx.imageSmoothingQuality = "high";
+	tempCtx.drawImage(srcCanvas, 0, 0, width, height, 0, 0, newWidth, newHeight);
+
+	const downscaled = tempCtx.getImageData(0, 0, newWidth, newHeight);
+
+	// Enhance contrast
+	const enhanced = new ImageData(newWidth, newHeight);
+	const enhancedData = enhanced.data;
+	const srcData = downscaled.data;
+
+	const contrastFactor = 1.5;
+	const intercept = 128 * (1 - contrastFactor);
+
+	for (let i = 0; i < srcData.length; i += 4) {
+		enhancedData[i] = Math.max(
+			0,
+			Math.min(255, srcData[i] * contrastFactor + intercept),
+		);
+		enhancedData[i + 1] = Math.max(
+			0,
+			Math.min(255, srcData[i + 1] * contrastFactor + intercept),
+		);
+		enhancedData[i + 2] = Math.max(
+			0,
+			Math.min(255, srcData[i + 2] * contrastFactor + intercept),
+		);
+		enhancedData[i + 3] = srcData[i + 3];
+	}
+
+	return enhanced;
+}
+
+// Adaptive contrast normalization using percentile histogram stretching.
+// Stretches 2nd-98th percentile luminance range to [0,255].
+// Returns original imageData if image is already well-exposed (range <= 4).
+function adaptiveNormalize(imageData) {
+	const { width, height, data } = imageData;
+	const totalPixels = width * height;
+
+	const hist = new Int32Array(256);
+	for (let i = 0; i < data.length; i += 4) {
+		hist[(data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8]++;
+	}
+
+	const lowCut = totalPixels * 0.02;
+	const highCut = totalPixels * 0.98;
+	let low = 0,
+		high = 255,
+		cumSum = 0;
+	for (let i = 0; i < 256; i++) {
+		cumSum += hist[i];
+		if (cumSum <= lowCut) low = i;
+		if (cumSum <= highCut) high = i;
+	}
+
+	if (high <= low + 4) return imageData;
+
+	const scale = 255 / (high - low);
+	const result = new ImageData(width, height);
+	const rd = result.data;
+	for (let i = 0; i < data.length; i += 4) {
+		rd[i] = (data[i] - low) * scale;
+		rd[i + 1] = (data[i + 1] - low) * scale;
+		rd[i + 2] = (data[i + 2] - low) * scale;
+		rd[i + 3] = data[i + 3];
+	}
+	return result;
+}
+
+// Estimates image sharpness via Laplacian variance on sparse pixel samples.
+// Samples every 4th pixel in both axes (~16x faster than full scan).
+// Returns variance — higher = sharper. Below ~50 indicates blur.
+function estimateBlur(imageData) {
+	const { width, height, data } = imageData;
+	const stride = 4;
+	let sum = 0,
+		sumSq = 0,
+		count = 0;
+
+	for (let y = 1; y < height - 1; y += stride) {
+		for (let x = 1; x < width - 1; x += stride) {
+			const c = (y * width + x) * 4;
+			const t = c - width * 4;
+			const b = c + width * 4;
+			const gc = (data[c] * 77 + data[c + 1] * 150 + data[c + 2] * 29) >> 8;
+			const gt = (data[t] * 77 + data[t + 1] * 150 + data[t + 2] * 29) >> 8;
+			const gb = (data[b] * 77 + data[b + 1] * 150 + data[b + 2] * 29) >> 8;
+			const gl = (data[c - 4] * 77 + data[c - 3] * 150 + data[c - 2] * 29) >> 8;
+			const gr = (data[c + 4] * 77 + data[c + 5] * 150 + data[c + 6] * 29) >> 8;
+			const lap = Math.abs(4 * gc - gt - gb - gl - gr);
+			sum += lap;
+			sumSq += lap * lap;
+			count++;
+		}
+	}
+
+	if (count === 0) return 0;
+	const mean = sum / count;
+	return sumSq / count - mean * mean;
+}
+
+// Process video frame with ImageBitmap
+async function processVideoFrame(imageBitmap, config = {}) {
+	if (!offscreenCanvas || !offscreenContext) {
+		throw new Error("OffscreenCanvas not initialized");
+	}
+
+	const enableFrameMerging = config.enableFrameMerging || false;
+	const resolutionScale =
+		config.resolutionScale !== undefined
+			? config.resolutionScale
+			: currentResolutionScale;
+	const crop = config.crop !== undefined ? config.crop : currentCrop;
+	const sharpen =
+		config.sharpen !== undefined ? config.sharpen : currentSharpen;
+	const safariOptimize =
+		config.optimizeForSafari !== undefined
+			? config.optimizeForSafari
+			: optimizeForSafari;
+
+	try {
+		// Calculate scaled dimensions
+		const scaledWidth = Math.floor(imageBitmap.width * resolutionScale);
+		const scaledHeight = Math.floor(imageBitmap.height * resolutionScale);
+
+		// Update canvas size if needed
+		if (
+			offscreenCanvas.width !== scaledWidth ||
+			offscreenCanvas.height !== scaledHeight
+		) {
+			offscreenCanvas.width = scaledWidth;
+			offscreenCanvas.height = scaledHeight;
+		}
+
+		// Apply image smoothing for better quality when scaling
+		if (resolutionScale !== 1) {
+			offscreenContext.imageSmoothingEnabled = true;
+			offscreenContext.imageSmoothingQuality = "high";
+		}
+
+		// Draw imageBitmap to canvas with scaling
+		offscreenContext.drawImage(imageBitmap, 0, 0, scaledWidth, scaledHeight);
+
+		// Get image data
+		let imageData = offscreenContext.getImageData(
+			0,
+			0,
+			scaledWidth,
+			scaledHeight,
+		);
+
+		// Stage 0: try the untouched frame first. A clear QR — the common case the
+		// instant a user brings a code into view — decodes immediately without paying
+		// for normalization/sharpening, minimising first-detection latency.
+		const rawResults = decodeQRCode(imageData, {
+			useSlidingWindow: false,
+			crop,
+			sharpen,
+		});
+		if (rawResults.length > 0) {
+			return {
+				success: true,
+				results: rawResults,
+				canvasWidth: scaledWidth,
+				canvasHeight: scaledHeight,
+			};
+		}
+
+		// Apply pre-processing before decode attempts:
+		// Safari path: downscale + fixed contrast (tuned for Safari rendering)
+		// Non-Safari path: adaptive contrast normalization + conditional light sharpening
+		if (safariOptimize) {
+			imageData = optimizeFrameForSafari(imageData);
+		} else {
+			imageData = adaptiveNormalize(imageData);
+			if (estimateBlur(imageData) < 50) {
+				imageData = sharpenForQR(imageData, 0.6);
+			}
+		}
+
+		// Apply frame merging if enabled
+		if (enableFrameMerging) {
+			addFrameToBuffer(imageData);
+			const mergedFrame = getMergedFrame();
+			if (mergedFrame) {
+				imageData = mergedFrame;
+			}
+		}
+
+		// Multi-stage detection for small QR codes
+		let results = [];
+
+		// Stage 1: Quick direct decode (fast path for normal QR)
+		results = decodeQRCode(imageData, {
+			useSlidingWindow: false,
+			crop,
+			sharpen,
+		});
+
+		if (results.length > 0) {
+			return {
+				success: true,
+				results,
+				canvasWidth: scaledWidth,
+				canvasHeight: scaledHeight,
+			};
+		}
+
+		// Stage 2: Sharpen + sliding window for medium QR
+		// const sharpened = sharpenForQR(imageData, 1.2);
+		// results = decodeQRCode(sharpened, {
+		//   useSlidingWindow: true,
+		//   scales: [1.0, 0.8],
+		//   stride: 0.3,
+		//   maxWindows: 6,
+		//   crop,
+		//   sharpen: null,
+		// });
+
+		// if (results.length > 0) {
+		//   return {
+		//     success: true,
+		//     results,
+		//     canvasWidth: scaledWidth,
+		//     canvasHeight: scaledHeight,
+		//   };
+		// }
+
+		// Stage 3: overlapping region tiles + upscale for small / off-centre QR.
+		// A single centre crop misses codes placed away from the middle, so sweep a
+		// set of overlapping tiles (centre + four corners). Each tile is upscaled so
+		// rqrr gets enough pixels per module to lock onto small, high-version codes.
+		// Only reached after Stages 1-2 miss, and the scan loop is throttled, so the
+		// extra work stays bounded.
+		// const tiles = generateRoiTiles(imageData.width, imageData.height, 0.6);
+		// for (const tile of tiles) {
+		//   const tile2d = extractWindow(imageData, tile);
+		//   const tileImageData = new ImageData(tile2d.data, tile2d.width, tile2d.height);
+
+		//   // Cap the upscaled dimension so large (e.g. 1080p) frames don't blow up
+		//   // memory/time while still magnifying tiny codes on small frames.
+		//   const scale = Math.min(2.5, Math.max(1.5, 1600 / tile2d.width));
+		//   const upscaled = upscaleImage(tileImageData, scale);
+		//   const enhanced = enhanceContrast(upscaled, 1.3);
+		//   const sharpUpscaled = sharpenForQR(enhanced, 1.0);
+
+		//   const tileResults = decodeQRCode(sharpUpscaled, {
+		//     useSlidingWindow: false,
+		//     crop: null,
+		//     sharpen: null,
+		//   });
+
+		//   if (tileResults.length > 0) {
+		//     // Map bounds from upscaled-tile space back to original coordinates.
+		//     for (const result of tileResults) {
+		//       if (result.bounds) {
+		//         result.bounds = result.bounds.map(([x, y]) => [
+		//           Math.round(x / scale + tile.x),
+		//           Math.round(y / scale + tile.y),
+		//         ]);
+		//       }
+		//     }
+		//     return {
+		//       success: true,
+		//       results: tileResults,
+		//       canvasWidth: scaledWidth,
+		//       canvasHeight: scaledHeight,
+		//     };
+		//   }
+		// }
+
+		// Stage 4: ZXing-WASM as a last resort. Only reached once Stages 0-3 (the
+		// Rust pipeline's cheapest to most expensive attempts) have all missed,
+		// so this cost only lands on the frames that were already the worst case.
+		const zxingResults = await decodeWithZXing(imageData);
+		if (zxingResults.length > 0) {
+			return {
+				success: true,
+				results: zxingResults,
+				canvasWidth: scaledWidth,
+				canvasHeight: scaledHeight,
+			};
+		}
+
+		return {
+			success: true,
+			results: [],
+			canvasWidth: scaledWidth,
+			canvasHeight: scaledHeight,
+		};
+	} catch (error) {
+		console.error("[Worker] Frame processing error:", error);
+		return {
+			success: false,
+			error: error.message,
+			results: [],
+		};
+	}
+}
+
+// Message handler
+self.onmessage = async function (e) {
+	const { type, id, payload } = e.data;
+
+	try {
+		switch (type) {
+			case "init": {
+				const result = await initializeWasm(
+					payload.wasmUrl,
+					payload.wasmJsUrl,
+					payload.zxingUrl,
+				);
+				self.postMessage({
+					type: "init-response",
+					id,
+					success: result.success,
+					error: result.error,
+				});
+				break;
+			}
+
+			case "update-config": {
+				updateCanvasConfig(payload);
+				self.postMessage({
+					type: "update-config-response",
+					id,
+					success: true,
+				});
+				break;
+			}
+
+			case "process-frame": {
+				const { imageBitmap, config } = payload;
+				const result = await processVideoFrame(imageBitmap, config);
+				self.postMessage({
+					type: "process-frame-response",
+					id,
+					success: result.success,
+					results: result.results,
+					canvasWidth: result.canvasWidth,
+					canvasHeight: result.canvasHeight,
+					error: result.error,
+				});
+				break;
+			}
+
+			case "decode": {
+				const { imageData, ...options } = payload;
+				let results = decodeQRCode(imageData, options);
+				if (results.length === 0) {
+					results = await decodeWithZXing(imageData);
+				}
+				self.postMessage({
+					type: "decode-response",
+					id,
+					results,
+				});
+				break;
+			}
+
+			case "clear-buffer": {
+				frameBuffer = [];
+				self.postMessage({
+					type: "clear-buffer-response",
+					id,
+					success: true,
+				});
+				break;
+			}
+
+			case "terminate": {
+				wasmModule = null;
+				isInitialized = false;
+				offscreenCanvas = null;
+				offscreenContext = null;
+				frameBuffer = [];
+				zxingModule = null;
+				zxingLoadPromise = null;
+				zxingLoadFailed = false;
+				self.close();
+				break;
+			}
+
+			default:
+				console.warn("[Worker] Unknown message type:", type);
+		}
+	} catch (error) {
+		self.postMessage({
+			type: type + "-error",
+			id,
+			error: error.message,
+		});
+	}
+};
