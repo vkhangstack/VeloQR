@@ -18,6 +18,12 @@ const NATIVE_SEARCH_INTERVAL = 33;
 // back to WASM — guards against browsers that advertise support but throw.
 const NATIVE_MAX_FAILURES = 3;
 
+// Safari/iOS never gets the native BarcodeDetector, so while searching the
+// WASM pipeline polls at this interval instead of scanDelay — tuned looser
+// than NATIVE_SEARCH_INTERVAL since a WASM decode pass costs more CPU than
+// the platform's ML-based detector.
+const WASM_SEARCH_INTERVAL_SAFARI = 150;
+
 export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerReturn {
   const {
     scanDelay = 500,
@@ -67,6 +73,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   // torn-down/stopped stream to the video element — which otherwise renders as
   // a blank/black frame.
   const startCallIdRef = useRef(0);
+  const isSafariPlatformRef = useRef(isNativeDetectorUnsupportedPlatform());
 
   // Initialize frame buffer if frame merging is enabled
   useEffect(() => {
@@ -113,13 +120,18 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     // Adaptive throttle for maximum first-detection sensitivity: while searching
     // (nothing found in the last scanDelay window) the cheap native detector runs
     // at ~30fps so a QR is caught the moment it enters the frame; after a hit it
-    // backs off to scanDelay to avoid flooding onScan. The heavier WASM pipeline
-    // always uses scanDelay to keep CPU bounded.
+    // backs off to scanDelay to avoid flooding onScan.
+    // Safari/iOS never gets the native detector (see isNativeDetectorUnsupportedPlatform),
+    // so the WASM pipeline polls at WASM_SEARCH_INTERVAL_SAFARI instead of the
+    // (often much longer) scanDelay while searching, to close the perceived
+    // latency gap with native ML-based detectors on other platforms. Other
+    // platforms without a native detector keep the original scanDelay-only
+    // behavior to avoid an unexpected CPU/battery cost.
     const now = performance.now();
     const searching = now - lastResultTimeRef.current >= scanDelay;
     const effectiveDelay = useNativeDetectorRef.current
       ? (searching ? NATIVE_SEARCH_INTERVAL : scanDelay)
-      : scanDelay;
+      : (searching && isSafariPlatformRef.current ? Math.min(scanDelay, WASM_SEARCH_INTERVAL_SAFARI) : scanDelay);
     if (now - lastScanTimeRef.current < effectiveDelay) {
       return;
     }
@@ -382,9 +394,11 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         ];
       }
 
-      // Apply Safari optimizations if enabled
+      // Apply Safari optimizations if enabled. When OffscreenCanvas + Worker
+      // is available, decoding runs off the main thread, so we can afford the
+      // higher-resolution capture path (see getSafariOptimizedConstraints).
       if (optimizeForSafari) {
-        constraints = getSafariOptimizedConstraints(constraints);
+        constraints = getSafariOptimizedConstraints(constraints, useWorkerProcessingRef.current);
       }
 
       // Request camera access FIRST - only open camera ONCE to avoid double flash.
