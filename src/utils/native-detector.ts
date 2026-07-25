@@ -6,6 +6,7 @@
 // the WASM decoder when it is unsupported or finds nothing.
 
 import { QRCodeResult } from '../types';
+import { isNativeDetectorUnsupportedPlatform } from './browser-detection';
 
 // Lazily-created singleton. Resolves to a BarcodeDetector instance, or null when
 // the API is missing or doesn't support the qr_code format. Cached so the
@@ -16,6 +17,11 @@ function getDetector(): Promise<any | null> {
   if (!detectorPromise) {
     detectorPromise = (async () => {
       try {
+        // Safari/iOS/macOS either lack BarcodeDetector or ship a version that
+        // fails to detect QR codes reliably — skip straight to the WASM path.
+        if (isNativeDetectorUnsupportedPlatform()) {
+          return null;
+        }
         const BD = (window as any).BarcodeDetector;
         if (!BD || typeof BD.getSupportedFormats !== 'function') {
           return null;

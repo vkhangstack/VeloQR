@@ -17,8 +17,24 @@ export function isIOS(): boolean {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
 }
 
+export function isMacOS(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  return /Mac/.test(navigator.platform) && !isIOS();
+}
+
 export function isSafariOrIOS(): boolean {
   return isSafari() || isIOS();
+}
+
+/**
+ * True on Safari (desktop or mobile) or any Apple platform (iOS/macOS).
+ * WebKit's BarcodeDetector support is either absent or too unreliable for QR
+ * detection, so callers use this to skip the native path and go straight to
+ * the WASM decoder.
+ */
+export function isNativeDetectorUnsupportedPlatform(): boolean {
+  return isSafari() || isIOS() || isMacOS();
 }
 
 export function isAndroid(): boolean {

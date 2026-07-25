@@ -35,7 +35,9 @@ export {
 export {
   isSafari,
   isIOS,
+  isMacOS,
   isSafariOrIOS,
+  isNativeDetectorUnsupportedPlatform,
   getSafariOptimizedConstraints,
 } from './utils/browser-detection';
 export {
