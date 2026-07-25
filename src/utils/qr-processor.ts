@@ -11,6 +11,20 @@ let lastScanTime = 0;
 const MIN_SCAN_INTERVAL = 100; // Minimum 100ms between scans
 let useWorker = true; // Default to using worker
 let workerConfig: WorkerConfig = {};
+let zxingUrl: string | undefined;
+
+/**
+ * Override the CDN URL the worker loads zxing-wasm's reader build from.
+ * ZXing-WASM supplements the primary Rust decoder as a last-resort fallback
+ * inside the worker; it defaults to jsDelivr and does not need to be
+ * configured unless you want to self-host it.
+ *
+ * @example
+ * configureZxing('https://cdn.example.com/zxing-wasm/reader/index.js');
+ */
+export function configureZxing(url: string): void {
+  zxingUrl = url;
+}
 
 /**
  * Configure Worker to load from jsDelivr CDN
@@ -124,7 +138,8 @@ export async function initWasm(): Promise<void> {
       await workerHelper.init(
         workerCfg.workerUrl!,
         makeAbsolute(wasmCfg.wasmUrl!),
-        makeAbsolute(wasmCfg.wasmJsUrl!)
+        makeAbsolute(wasmCfg.wasmJsUrl!),
+        zxingUrl
       );
       console.log('Worker initialized successfully');
     }

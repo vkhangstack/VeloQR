@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice, CameraFacingMode, CameraFacing, PerformanceStats } from '../types';
 import { initWasm, decodeQRFromImageData, supportsOffscreenCanvas, processVideoFrame, updateWorkerConfig, clearFrameBuffer } from '../utils/qr-processor';
-import { isSafariOrIOS, getSafariOptimizedConstraints, isMobile } from '../utils/browser-detection';
+import { isSafariOrIOS, isNativeDetectorUnsupportedPlatform, getSafariOptimizedConstraints, isMobile } from '../utils/browser-detection';
 import { selectBestCameraDeviceId, acquireCameraStream } from '../utils/camera-manager';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
 import { preprocessForQR } from '../utils/image-preprocessor';
@@ -17,6 +17,12 @@ const NATIVE_SEARCH_INTERVAL = 33;
 // Disable the native path after this many consecutive detect() failures and fall
 // back to WASM — guards against browsers that advertise support but throw.
 const NATIVE_MAX_FAILURES = 3;
+
+// Safari/iOS never gets the native BarcodeDetector, so while searching the
+// WASM pipeline polls at this interval instead of scanDelay — tuned looser
+// than NATIVE_SEARCH_INTERVAL since a WASM decode pass costs more CPU than
+// the platform's ML-based detector.
+const WASM_SEARCH_INTERVAL_SAFARI = 150;
 
 export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerReturn {
   const {
@@ -61,6 +67,13 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   const barcodeDetectorRef = useRef<any>(null);
   const useNativeDetectorRef = useRef(false);
   const nativeFailuresRef = useRef(0);
+  // Bumped by stopScanning() so an in-flight startScanning() call (e.g. the
+  // second invocation under React StrictMode's mount/cleanup/mount, or a rapid
+  // switchCamera) can detect it's stale and bail out instead of attaching a
+  // torn-down/stopped stream to the video element — which otherwise renders as
+  // a blank/black frame.
+  const startCallIdRef = useRef(0);
+  const isSafariPlatformRef = useRef(isNativeDetectorUnsupportedPlatform());
 
   // Initialize frame buffer if frame merging is enabled
   useEffect(() => {
@@ -107,13 +120,18 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
     // Adaptive throttle for maximum first-detection sensitivity: while searching
     // (nothing found in the last scanDelay window) the cheap native detector runs
     // at ~30fps so a QR is caught the moment it enters the frame; after a hit it
-    // backs off to scanDelay to avoid flooding onScan. The heavier WASM pipeline
-    // always uses scanDelay to keep CPU bounded.
+    // backs off to scanDelay to avoid flooding onScan.
+    // Safari/iOS never gets the native detector (see isNativeDetectorUnsupportedPlatform),
+    // so the WASM pipeline polls at WASM_SEARCH_INTERVAL_SAFARI instead of the
+    // (often much longer) scanDelay while searching, to close the perceived
+    // latency gap with native ML-based detectors on other platforms. Other
+    // platforms without a native detector keep the original scanDelay-only
+    // behavior to avoid an unexpected CPU/battery cost.
     const now = performance.now();
     const searching = now - lastResultTimeRef.current >= scanDelay;
     const effectiveDelay = useNativeDetectorRef.current
       ? (searching ? NATIVE_SEARCH_INTERVAL : scanDelay)
-      : scanDelay;
+      : (searching && isSafariPlatformRef.current ? Math.min(scanDelay, WASM_SEARCH_INTERVAL_SAFARI) : scanDelay);
     if (now - lastScanTimeRef.current < effectiveDelay) {
       return;
     }
@@ -308,6 +326,9 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   }, []);
 
   const startScanning = useCallback(async (cameraFacing?: CameraFacing) => {
+    const callId = ++startCallIdRef.current;
+    const isStale = () => callId !== startCallIdRef.current;
+
     try {
       // Initialize WASM if not already done
       if (!wasmInitializedRef.current) {
@@ -326,19 +347,25 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         // Probe for the native BarcodeDetector — near-instant, platform-backed QR
         // detection on supported browsers (notably Android Chrome). When present
         // it becomes the primary detector; WASM stays as the fallback.
-        try {
-          const BD = (window as any).BarcodeDetector;
-          if (BD && typeof BD.getSupportedFormats === 'function') {
-            const formats = await BD.getSupportedFormats();
-            if (formats.includes('qr_code')) {
-              barcodeDetectorRef.current = new BD({ formats: ['qr_code'] });
-              useNativeDetectorRef.current = true;
-              nativeFailuresRef.current = 0;
-              console.log('[useQRScanner] Native BarcodeDetector active');
+        // Skipped on Safari/iOS/macOS: WebKit either lacks BarcodeDetector or
+        // ships a version that fails to detect QR codes reliably.
+        if (isNativeDetectorUnsupportedPlatform()) {
+          console.log('[useQRScanner] Skipping native BarcodeDetector on Safari/iOS/macOS');
+        } else {
+          try {
+            const BD = (window as any).BarcodeDetector;
+            if (BD && typeof BD.getSupportedFormats === 'function') {
+              const formats = await BD.getSupportedFormats();
+              if (formats.includes('qr_code')) {
+                barcodeDetectorRef.current = new BD({ formats: ['qr_code'] });
+                useNativeDetectorRef.current = true;
+                nativeFailuresRef.current = 0;
+                console.log('[useQRScanner] Native BarcodeDetector active');
+              }
             }
+          } catch (bdErr) {
+            console.warn('[useQRScanner] BarcodeDetector probe failed:', bdErr);
           }
-        } catch (bdErr) {
-          console.warn('[useQRScanner] BarcodeDetector probe failed:', bdErr);
         }
       }
 
@@ -367,15 +394,25 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         ];
       }
 
-      // Apply Safari optimizations if enabled
+      // Apply Safari optimizations if enabled. When OffscreenCanvas + Worker
+      // is available, decoding runs off the main thread, so we can afford the
+      // higher-resolution capture path (see getSafariOptimizedConstraints).
       if (optimizeForSafari) {
-        constraints = getSafariOptimizedConstraints(constraints);
+        constraints = getSafariOptimizedConstraints(constraints, useWorkerProcessingRef.current);
       }
 
       // Request camera access FIRST - only open camera ONCE to avoid double flash.
       // acquireCameraStream relaxes constraints step-by-step so the camera opens
       // on low-res webcams and restrictive browsers instead of hard-failing.
       let stream = await acquireCameraStream(constraints);
+
+      // This call was superseded (unmounted / stopScanning / another
+      // startScanning) while getUserMedia was pending — release the camera we
+      // just opened and stop, rather than attaching it below.
+      if (isStale()) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
 
       streamRef.current = stream;
 
@@ -399,28 +436,43 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
 
       // Auto-select the best rear lens: on multi-camera phones the browser often
       // hands back the ultra-wide lens (which cannot focus on close QR codes).
-      // If a better main lens exists, re-acquire with an exact deviceId. This only
-      // opens a second stream in the rare case the initial pick was suboptimal.
+      // If a better main lens exists, re-acquire with an exact deviceId.
+      //
+      // The original stream is stopped BEFORE requesting the replacement rather
+      // than after: many Android devices (and their camera HAL) cannot hold two
+      // concurrent opens to the camera hardware, even across different lens
+      // deviceIds. Requesting the second stream first can silently kill the
+      // first stream's track (readyState -> 'ended'), which then gets attached
+      // to the video element below and renders as a blank/black frame.
       if (autoSelectBestCamera) {
         const bestDeviceId = selectBestCameraDeviceId(devices, facingMode, settings.deviceId);
         if (bestDeviceId) {
           try {
             const { facingMode: _omit, ...restConstraints } = constraints;
+            stream.getTracks().forEach((track) => track.stop());
             const betterStream = await navigator.mediaDevices.getUserMedia({
               video: { ...restConstraints, deviceId: { exact: bestDeviceId } },
               audio: false,
             });
-            // Swap to the better stream and release the original.
-            stream.getTracks().forEach((track) => track.stop());
             stream = betterStream;
             streamRef.current = betterStream;
             videoTrack = stream.getVideoTracks()[0];
             settings = videoTrack.getSettings();
           } catch (selectErr) {
-            // Keep the original stream if re-acquisition fails for any reason.
-            console.warn('[useQRScanner] Best-camera selection failed, keeping default:', selectErr);
+            // The original stream is already stopped at this point, so fall
+            // back to a plain facingMode-only request to recover the camera.
+            console.warn('[useQRScanner] Best-camera selection failed, reacquiring default:', selectErr);
+            stream = await acquireCameraStream(constraints);
+            streamRef.current = stream;
+            videoTrack = stream.getVideoTracks()[0];
+            settings = videoTrack.getSettings();
           }
         }
+      }
+
+      if (isStale()) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
       }
 
       const currentCam = devices.find(d => d.deviceId === settings.deviceId);
@@ -464,6 +516,17 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
             throw playError;
           }
         }
+      }
+
+      // Video metadata/play involved awaits above — re-check staleness before
+      // committing scanning state or touching the (possibly torn-down) video.
+      if (isStale()) {
+        stream.getTracks().forEach((track) => track.stop());
+        if (videoRef.current && videoRef.current.srcObject === stream) {
+          videoRef.current.srcObject = null;
+        }
+        streamRef.current = null;
+        return;
       }
 
       // Initialize OffscreenCanvas in worker if supported and not already initialized
@@ -516,6 +579,10 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
   }, [renderLoop, onError, videoConstraints, optimizeForSafari, preferredCamera, getFacingMode, enableFrameMerging, frameMergeCount, resolutionScale, crop, sharpen, autoSelectBestCamera]);
 
   const stopScanning = useCallback(() => {
+    // Invalidate any in-flight startScanning() call so it aborts instead of
+    // attaching a stream to a video element we're tearing down here.
+    startCallIdRef.current += 1;
+
     setIsScanning(false);
 
     // Cancel animation frame
