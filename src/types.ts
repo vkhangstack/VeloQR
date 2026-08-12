@@ -99,6 +99,7 @@ export interface QRScannerProps {
   sharpen?: number; // Sharpening level for image processing (0 = none, higher = more sharpen)
   vibrate?: boolean; // Vibrate when QR code is detected
   autoSelectBestCamera?: boolean; // Auto-pick the best rear lens (avoids ultra-wide) — default: true
+  autoStart?: boolean; // Auto-start the camera on mount — default: true. If the automatic start fails (e.g. old iOS requires a user gesture), it retries on the next user interaction.
 }
 
 export interface QRImageScannerProps {

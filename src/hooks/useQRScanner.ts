@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { QRCodeResult, UseQRScannerOptions, UseQRScannerReturn, CameraDevice, CameraFacingMode, CameraFacing, PerformanceStats } from '../types';
 import { initWasm, decodeQRFromImageData, supportsOffscreenCanvas, processVideoFrame, updateWorkerConfig, clearFrameBuffer } from '../utils/qr-processor';
 import { isSafariOrIOS, isNativeDetectorUnsupportedPlatform, getSafariOptimizedConstraints, isMobile } from '../utils/browser-detection';
-import { selectBestCameraDeviceId, acquireCameraStream } from '../utils/camera-manager';
+import { selectBestCameraDeviceId, acquireCameraStream, listAvailableCameras } from '../utils/camera-manager';
 import { FrameBuffer, optimizeFrameForSafari } from '../utils/performanceOptimizer';
 import { preprocessForQR } from '../utils/image-preprocessor';
 import { createCameraError } from '../constants/cameraErrors';
@@ -416,23 +416,14 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
 
       streamRef.current = stream;
 
-      // Get available cameras AFTER camera is already open (no double flash)
-      const allDevices = navigator.mediaDevices.enumerateDevices
-        ? await navigator.mediaDevices.enumerateDevices()
-        : [];
-      const devices = allDevices
-        .filter((device) => device.kind === 'videoinput')
-        .map((device) => ({
-          deviceId: device.deviceId,
-          label: device.label || `Camera ${device.deviceId.slice(0, 5)}`,
-          kind: 'videoinput' as const,
-          groupId: device.groupId,
-        }));
-      setAvailableCameras(devices);
-
       // Identify current camera
       let videoTrack = stream.getVideoTracks()[0];
       let settings = videoTrack.getSettings();
+
+      // Get available cameras AFTER camera is already open (no double flash).
+      // Falls back to the active track when enumerateDevices is unavailable.
+      const devices = await listAvailableCameras(videoTrack);
+      setAvailableCameras(devices);
 
       // Auto-select the best rear lens: on multi-camera phones the browser often
       // hands back the ultra-wide lens (which cannot focus on close QR codes).
@@ -450,6 +441,13 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
           try {
             const { facingMode: _omit, ...restConstraints } = constraints;
             stream.getTracks().forEach((track) => track.stop());
+            // Give the OS camera HAL a moment to actually release the hardware —
+            // old iPhones in particular fail an immediate re-acquire with
+            // NotReadableError even though track.stop() has returned.
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            if (isStale()) {
+              return;
+            }
             const betterStream = await navigator.mediaDevices.getUserMedia({
               video: { ...restConstraints, deviceId: { exact: bestDeviceId } },
               audio: false,
@@ -460,8 +458,13 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
             settings = videoTrack.getSettings();
           } catch (selectErr) {
             // The original stream is already stopped at this point, so fall
-            // back to a plain facingMode-only request to recover the camera.
+            // back to a plain facingMode request to recover the camera. Wait
+            // for the hardware release first (same old-iPhone race as above).
             console.warn('[useQRScanner] Best-camera selection failed, reacquiring default:', selectErr);
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            if (isStale()) {
+              return;
+            }
             stream = await acquireCameraStream(constraints);
             streamRef.current = stream;
             videoTrack = stream.getVideoTracks()[0];

@@ -34,6 +34,7 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   sharpen,
   vibrate = false,
   autoSelectBestCamera = true,
+  autoStart = true,
 }) => {
   const [showDetection, setShowDetection] = useState(false);
   const [currentFacing, setCurrentFacing] = useState<SimpleCameraFacing>(
@@ -152,8 +153,44 @@ export const QRScanner: React.FC<QRScannerProps> = ({
   };
 
   useEffect(() => {
-    startScanning();
+    if (!autoStart) {
+      return () => {
+        stopScanning();
+      };
+    }
+
+    let cancelled = false;
+    let starting = false;
+
+    const tryStart = async () => {
+      // Skip while a start is in flight or the camera is already running —
+      // startScanning() has no re-entrancy guard of its own.
+      if (cancelled || starting || videoRef.current?.srcObject) {
+        return;
+      }
+      starting = true;
+      try {
+        await startScanning();
+      } catch {
+        // Error is already surfaced via the error state / onError.
+      } finally {
+        starting = false;
+      }
+    };
+
+    tryStart();
+
+    // Old iOS Safari rejects getUserMedia when it isn't triggered by a user
+    // gesture — if the automatic start failed, retry on each interaction
+    // (tap/scroll) until the camera opens.
+    const handleInteraction = () => tryStart();
+    document.addEventListener('pointerdown', handleInteraction);
+    document.addEventListener('touchstart', handleInteraction);
+
     return () => {
+      cancelled = true;
+      document.removeEventListener('pointerdown', handleInteraction);
+      document.removeEventListener('touchstart', handleInteraction);
       stopScanning();
     };
   }, []);

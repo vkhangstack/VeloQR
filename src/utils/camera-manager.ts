@@ -51,16 +51,25 @@ export async function acquireCameraStream(
   delete (withoutAdvanced as { advanced?: unknown }).advanced;
 
   // Tier 3: only the facing hint — drop all resolution/frameRate requirements so
-  // even fixed-resolution / low-res cameras qualify.
-  const facingOnly: MediaTrackConstraints = baseConstraints.facingMode
-    ? { facingMode: baseConstraints.facingMode }
-    : {};
+  // even fixed-resolution / low-res cameras qualify. NOTE: a bare-string
+  // facingMode is treated as an EXACT constraint by the spec, and older
+  // devices (notably old iPhones on legacy WebKit) can fail exact facingMode
+  // resolution entirely.
+  const facingMode = baseConstraints.facingMode;
+  const facingExact: MediaTrackConstraints = facingMode ? { facingMode } : {};
+
+  // Tier 4: the facing hint as a soft (ideal) preference — still steers the
+  // browser toward the rear camera when it can, but won't fail on devices that
+  // can't resolve exact facingMode.
+  const facingIdeal: MediaTrackConstraints =
+    typeof facingMode === 'string' ? { facingMode: { ideal: facingMode } } : {};
 
   const tiers: Array<MediaTrackConstraints | boolean> = [
     baseConstraints,
     withoutAdvanced,
-    facingOnly,
-    true, // Tier 4: bare minimum — accept any camera the device offers.
+    facingExact,
+    facingIdeal,
+    true, // Tier 5: bare minimum — accept any camera the device offers.
   ];
 
   let lastError: unknown;
@@ -89,26 +98,76 @@ export async function acquireCameraStream(
 }
 
 /**
+ * Map a raw MediaDeviceInfo to our CameraDevice shape.
+ */
+function toCameraDevice(device: MediaDeviceInfo): CameraDevice {
+  return {
+    deviceId: device.deviceId,
+    label: device.label || `Camera ${device.deviceId.slice(0, 5)}`,
+    kind: 'videoinput',
+    groupId: device.groupId,
+  };
+}
+
+/**
+ * List available camera devices WITHOUT opening a new stream.
+ *
+ * Call this AFTER a camera stream is already open: the active permission grant
+ * makes enumerateDevices() return real deviceIds/labels, so no extra
+ * getUserMedia (and no double flash) is needed.
+ *
+ * Fallback: when enumerateDevices is missing, throws, or returns nothing
+ * (older/embedded browsers), synthesize a single entry from the currently-open
+ * track so callers still know which camera is active.
+ */
+export async function listAvailableCameras(
+  activeTrack?: MediaStreamTrack
+): Promise<CameraDevice[]> {
+  if (navigator.mediaDevices && typeof navigator.mediaDevices.enumerateDevices === 'function') {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices
+        .filter((device) => device.kind === 'videoinput')
+        .map(toCameraDevice);
+      if (cameras.length > 0) {
+        return cameras;
+      }
+    } catch (error) {
+      console.warn('Failed to enumerate camera devices:', error);
+    }
+  }
+
+  // Fallback: derive at least the active camera from the open track.
+  if (activeTrack) {
+    const settings = activeTrack.getSettings?.();
+    if (settings?.deviceId) {
+      return [
+        {
+          deviceId: settings.deviceId,
+          label: activeTrack.label || `Camera ${settings.deviceId.slice(0, 5)}`,
+          kind: 'videoinput',
+          groupId: settings.groupId,
+        },
+      ];
+    }
+  }
+
+  return [];
+}
+
+/**
  * Get list of available camera devices
  */
 export async function getCameraDevices(): Promise<CameraDevice[]> {
   try {
     // Request permissions first
-   const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
 
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    stream.getTracks().forEach(track => track.stop());
-    
-    const videoDevices = devices
-      .filter((device) => device.kind === 'videoinput')
-      .map((device) => ({
-        deviceId: device.deviceId,
-        label: device.label || `Camera ${device.deviceId.slice(0, 5)}`,
-        kind: 'videoinput' as const,
-        groupId: device.groupId,
-      }));
-
-    return videoDevices;
+    try {
+      return await listAvailableCameras(stream.getVideoTracks()[0]);
+    } finally {
+      stream.getTracks().forEach(track => track.stop());
+    }
   } catch (error) {
     console.error('Failed to enumerate camera devices:', error);
     return [];
