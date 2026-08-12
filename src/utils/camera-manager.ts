@@ -50,24 +50,33 @@ export async function acquireCameraStream(
   const withoutAdvanced: MediaTrackConstraints = { ...baseConstraints };
   delete (withoutAdvanced as { advanced?: unknown }).advanced;
 
-  // Tier 3: only the facing hint — drop all resolution/frameRate requirements so
-  // even fixed-resolution / low-res cameras qualify. NOTE: a bare-string
-  // facingMode is treated as an EXACT constraint by the spec, and older
-  // devices (notably old iPhones on legacy WebKit) can fail exact facingMode
-  // resolution entirely.
+  // Tier 3: same request, but with every `min`/`max` cap stripped (only `ideal`
+  // targets remain) and facingMode softened to `ideal`. iOS Safari is notorious
+  // for failing requests that combine an exact facingMode with width/height/
+  // frameRate `max` caps (OverconstrainedError), even when the device clearly
+  // supports them.
   const facingMode = baseConstraints.facingMode;
-  const facingExact: MediaTrackConstraints = facingMode ? { facingMode } : {};
+  const softFacing =
+    typeof facingMode === 'string' ? { ideal: facingMode } : facingMode;
+  const idealOnly: MediaTrackConstraints = { ...withoutAdvanced, facingMode: softFacing };
+  for (const key of ['width', 'height', 'frameRate', 'aspectRatio'] as const) {
+    const value = idealOnly[key];
+    if (value && typeof value === 'object' && 'ideal' in (value as object)) {
+      idealOnly[key] = { ideal: (value as { ideal?: number }).ideal };
+    }
+  }
 
-  // Tier 4: the facing hint as a soft (ideal) preference — still steers the
-  // browser toward the rear camera when it can, but won't fail on devices that
-  // can't resolve exact facingMode.
+  // Tier 4: only the facing hint, kept soft. NOTE: a bare-string facingMode is
+  // treated as an EXACT constraint by the spec, and iPhones on some WebKit
+  // versions fail exact facingMode resolution entirely, so we go straight to
+  // the soft form here.
   const facingIdeal: MediaTrackConstraints =
     typeof facingMode === 'string' ? { facingMode: { ideal: facingMode } } : {};
 
   const tiers: Array<MediaTrackConstraints | boolean> = [
     baseConstraints,
     withoutAdvanced,
-    facingExact,
+    idealOnly,
     facingIdeal,
     true, // Tier 5: bare minimum — accept any camera the device offers.
   ];
@@ -91,6 +100,13 @@ export async function acquireCameraStream(
         throw err;
       }
       // OverconstrainedError / NotReadableError / TypeError → try the next tier.
+      // NotReadableError often means the OS camera HAL hasn't released the
+      // hardware yet (common on iPhones right after a previous stream stopped)
+      // — give it a moment before the next attempt instead of burning through
+      // all tiers instantly.
+      if (name === 'NotReadableError') {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
     }
   }
 
@@ -351,14 +367,25 @@ export async function switchCamera(
     currentStream.getTracks().forEach(track => track.stop());
   }
 
-  // Start new stream with target device
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: {
-      ...constraints,
-      deviceId: { exact: targetDeviceId },
-    },
-    audio: false,
-  });
-
-  return stream;
+  // Start new stream with target device. On iOS, combining an exact deviceId
+  // with resolution/frameRate constraints frequently throws
+  // OverconstrainedError, so fall back to a bare deviceId request.
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: {
+        ...constraints,
+        deviceId: { exact: targetDeviceId },
+      },
+      audio: false,
+    });
+  } catch (err) {
+    const name = (err as { name?: string })?.name;
+    if (name === 'OverconstrainedError' || name === 'NotReadableError' || err instanceof TypeError) {
+      return await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: targetDeviceId } },
+        audio: false,
+      });
+    }
+    throw err;
+  }
 }

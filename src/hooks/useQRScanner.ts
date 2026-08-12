@@ -439,7 +439,7 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
         const bestDeviceId = selectBestCameraDeviceId(devices, facingMode, settings.deviceId);
         if (bestDeviceId) {
           try {
-            const { facingMode: _omit, ...restConstraints } = constraints;
+            const { facingMode: _omit, advanced: _omitAdvanced, ...restConstraints } = constraints;
             stream.getTracks().forEach((track) => track.stop());
             // Give the OS camera HAL a moment to actually release the hardware —
             // old iPhones in particular fail an immediate re-acquire with
@@ -448,10 +448,29 @@ export function useQRScanner(options: UseQRScannerOptions = {}): UseQRScannerRet
             if (isStale()) {
               return;
             }
-            const betterStream = await navigator.mediaDevices.getUserMedia({
-              video: { ...restConstraints, deviceId: { exact: bestDeviceId } },
-              audio: false,
-            });
+            // iOS WebKit frequently throws OverconstrainedError when an exact
+            // deviceId is combined with resolution/frameRate constraints, so
+            // retry with a bare deviceId request before giving up.
+            let betterStream: MediaStream;
+            try {
+              betterStream = await navigator.mediaDevices.getUserMedia({
+                video: { ...restConstraints, deviceId: { exact: bestDeviceId } },
+                audio: false,
+              });
+            } catch (deviceErr) {
+              const name = (deviceErr as { name?: string })?.name;
+              if (
+                name !== 'OverconstrainedError' &&
+                name !== 'NotReadableError' &&
+                !(deviceErr instanceof TypeError)
+              ) {
+                throw deviceErr;
+              }
+              betterStream = await navigator.mediaDevices.getUserMedia({
+                video: { deviceId: { exact: bestDeviceId } },
+                audio: false,
+              });
+            }
             stream = betterStream;
             streamRef.current = betterStream;
             videoTrack = stream.getVideoTracks()[0];

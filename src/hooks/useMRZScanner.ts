@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { MRZResult, UseMRZScannerOptions, UseMRZScannerReturn, CameraDevice, CameraFacingMode, CameraFacing } from '../types';
 import { initWasm, decodeMRZFromImageData } from '../utils/mrz-processor';
-import { getCameraDevices } from '../utils/camera-manager';
+import { acquireCameraStream, getCameraDevices } from '../utils/camera-manager';
 import { isSafariOrIOS, getSafariOptimizedConstraints, isMobile } from '../utils/browser-detection';
 import { createCameraError } from '../constants/cameraErrors';
 
@@ -160,11 +160,10 @@ export function useMRZScanner(options: UseMRZScannerOptions = {}): UseMRZScanner
         constraints = getSafariOptimizedConstraints(constraints);
       }
 
-      // Request camera access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: constraints,
-        audio: false,
-      });
+      // Request camera access. acquireCameraStream relaxes constraints
+      // step-by-step so the camera still opens on devices/browsers (notably
+      // iPhones) that reject the fully-specified request.
+      const stream = await acquireCameraStream(constraints);
 
       streamRef.current = stream;
 

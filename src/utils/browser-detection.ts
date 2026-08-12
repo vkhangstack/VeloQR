@@ -66,20 +66,24 @@ export function getSafariOptimizedConstraints(
     return baseConstraints;
   }
 
+  // NOTE: `ideal`-only constraints on purpose. Adding `max` caps here makes
+  // iOS Safari throw OverconstrainedError (camera fails to open entirely) even
+  // though the device supports the requested modes — the browser clamps
+  // `ideal` to the closest supported resolution/frameRate anyway.
   if (offMainThread) {
     return {
       ...baseConstraints,
-      width: { ideal: 1920, max: 1920 },
-      height: { ideal: 1080, max: 1080 },
-      frameRate: { ideal: 30, max: 30 },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+      frameRate: { ideal: 30 },
     };
   }
 
   // Safari optimization: Lower resolution for better performance
   return {
     ...baseConstraints,
-    width: { ideal: 1280, max: 1920 },
-    height: { ideal: 720, max: 1080 },
-    frameRate: { ideal: 24, max: 30 }, // Lower frame rate for Safari
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 24 }, // Lower frame rate for Safari
   };
 }
